@@ -6,7 +6,9 @@ Using this CLI tool you can download backups of devices assigned to your AppleID
 **This tool is for educational purposes only. Before you start, make sure it's not illegal in your country.**
 
 Follow us on twitter [@hackappcom](https://twitter.com/hackappcom)  and [facebook](https://www.facebook.com/groups/1480690882187595/)
+
 Hackapp [blog](blog.hackapp.com)
+
 Mobile Applications Scanner [hackapp.com](https://hackapp.com)
 
 
