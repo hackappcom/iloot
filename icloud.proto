@@ -1,0 +1,97 @@
+package icloud;
+
+message MBSAccount {
+    optional string AccountID = 1;
+    repeated bytes backupUDID = 2;
+}
+
+message MBSBackup {
+    optional bytes backupUDID = 1;
+    optional uint64 QuotaUsed = 2;
+    optional MBSSnapshot Snapshot = 3;
+    optional MBSBackupAttributes Attributes = 4;
+    optional uint64 KeysLastModified = 5;
+}
+
+message MBSBackupAttributes {
+    optional string DeviceClass = 1;
+    optional string ProductType = 2;
+    optional string SerialNumber = 3;
+    optional string DeviceColor = 4;
+    optional string HardwareModel = 5;
+    optional string MarketingName = 6;
+}
+
+message MBSFile {
+    optional bytes FileID = 1;
+    optional string Domain = 2;
+    optional string RelativePath = 3;
+    optional bytes Signature = 4;
+    optional uint64 Size = 5;
+    optional MBSFileAttributes Attributes = 6;
+}
+
+message MBSFileAttributes {
+    optional uint32 KeybagID = 1;
+    optional string Target = 2;
+    optional bytes EncryptionKey = 3;
+    optional uint64 InodeNumber = 4;
+    optional uint32 Mode = 5;
+    optional uint32 UserID = 6;
+    optional uint32 GroupID = 7;
+    optional uint64 LastModified = 8;
+    optional uint64 LastStatusChange = 9;
+    optional uint64 Birth = 10;
+    optional uint32 ProtectionClass = 12;
+    optional MBSFileExtendedAttribute ExtendedAttribute = 13;
+    optional uint32 EncryptionKeyVersion = 14;
+    optional uint64 DecryptedSize = 15;
+}
+
+message MBSSnapshot {
+    optional uint32 SnapshotID = 1;
+    optional uint64 QuotaReserved = 2;
+    optional uint64 LastModified = 3;
+    optional MBSSnapshotAttributes Attributes = 5;
+    optional uint64 Committed = 6;
+}
+
+message MBSSnapshotAttributes {
+    optional string DeviceName = 1;
+    optional string ProductVersion = 2;
+    optional string BuildVersion = 3;
+    optional uint32 KeybagID = 4;
+    optional bytes KeybagUUID = 5;
+    optional int32 BackupReason = 6;
+    optional int32 BackupType = 7;
+}
+
+message MBSSnapshotID {
+    optional uint32 SnapshotID = 1;
+}
+
+message MBSFileAuthToken {
+    required bytes FileID = 1;
+    optional string AuthToken = 2;
+}
+message MBSFileAuthTokens {
+    repeated MBSFileAuthToken tokens = 1;
+}
+
+message MBSFileID {
+    required bytes FileID = 1;
+}
+
+message MBSKey {
+    optional uint32 KeyID = 1;
+    optional bytes KeyData = 2;
+}
+
+message MBSKeySet {
+    repeated MBSKey Key = 1;
+}
+
+message MBSFileExtendedAttribute {
+    optional string Name = 1;
+    optional bytes Value = 2;
+}

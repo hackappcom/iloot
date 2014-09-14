@@ -1,10 +1,11 @@
 iLoot
 =====
 
-OpenSource tool for  iCloud backups download. Based on upgrarded [iphone-dataprotection](https://code.google.com/p/iphone-dataprotection/) script. (offset operations added and other minor bugs fixed)
+Using this CLI tool you can download backups of devices assigned with your AppleID. Based on [iphone-dataprotection](https://code.google.com/p/iphone-dataprotection/) script, so copyrights belong to respective owners. Offset operations added and other minor bugs fixed.
 
+**This tool is for educational purposes only. Before you start, make sure it's not illegal in your country.**
 
-Using this CLI tool you can download backups of all devices assigned with AppleID. 
+Follow us on twitter [@hackappcom](https://twitter.com/hackappcom)
 
 
 Example

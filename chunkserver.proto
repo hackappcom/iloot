@@ -1,0 +1,133 @@
+//source: http://pastebin.com/ZwxqpcNA
+// MMCS protobuf definitions v 2011-11-01
+// MobileMe Content Stream aka iCloud
+//
+// reversed by Lokkju <lokkju@lokkju.com>
+//
+
+package chunkserver;
+
+message ChunkInfo {
+  required bytes chunk_checksum = 1;
+  optional bytes chunk_encryption_key = 2;
+  required uint32 chunk_length = 3;
+}
+message NameValuePair {
+  required string name = 1;
+  required string value = 2;
+}
+message HostInfo {
+  required string hostname = 1;
+  required uint32 port = 2;
+  required string method = 3;
+  required string uri = 4;
+  required string transport_protocol = 5;
+  required string transport_protocol_version = 6;
+  required string scheme = 7;
+  repeated NameValuePair headers = 8;
+}
+message ErrorResponse {
+  required string domain = 1;
+  required int32 error_code = 2;
+  optional string error_description = 3;
+  repeated ErrorResponse underlying_errors = 4;
+  repeated NameValuePair name_value_pair = 5;
+}
+message FileError {
+  required bytes file_checksum = 1;
+  required ErrorResponse error_response = 2;
+}
+message ChunkError {
+  required bytes chunk_checksum = 1;
+  required ErrorResponse error_response = 2;
+}
+message ChunkErrorIndex {
+  required bytes chunk_checksum = 1;
+  required ErrorResponse error_response = 2;
+  required uint32 chunk_index = 3;
+}
+message FileChunkError {
+  required bytes file_checksum = 1;
+  repeated ChunkErrorIndex chunk_error = 2;
+}
+message StorageContainerError {
+  required string storage_container_key = 1;
+  required ErrorResponse error_response = 2;
+}
+message MethodCompletionInfo {
+  required string url = 1;
+  required uint32 response_status_code = 2;
+  optional string response_status_line = 3;
+  repeated NameValuePair vendor_response_headers = 4;
+  optional bytes response_body = 5;
+  optional ErrorResponse error = 6;
+  optional bytes client_computed_md5 = 7;
+  repeated NameValuePair vendor_nv_pairs = 8;
+  repeated NameValuePair client_nv_pairs = 9;
+  required string storage_container_authorization_token = 10;
+}
+message MethodCompletionInfoList {
+  repeated MethodCompletionInfo method_completion_info = 1;
+}
+message FileChunkList {
+  required bytes file_checksum = 1;
+  required string authorization = 2;
+  repeated ChunkInfo chunk_info = 3;
+}
+message FileChunkLists {
+  repeated FileChunkList file_chunk_list = 1;
+}
+message StorageContainerChunkList {
+  required bytes storage_container_key = 1;
+  required HostInfo host_info = 2;
+  repeated bytes chunk_checksum = 3;
+  required string storage_container_authorization_token = 4;
+}
+message StorageContainerChunkLists {
+  repeated StorageContainerChunkList storage_container_chunk_list = 1;
+  repeated FileError file_error = 2;
+  optional uint32 verbosity_level = 3;
+}
+message StorageContainerErrorList {
+  repeated StorageContainerError storage_container_error = 1;
+}
+message FileChecksumAuthorization {
+  required bytes file_checksum = 1;
+  required string authorization = 2;
+  repeated bytes chunk_checksums = 3;
+}
+message FileChecksumAuthorizationList {
+  repeated FileChecksumAuthorization file_checksum_authorization = 1;
+}
+message ChunkReference {
+  required uint64 container_index = 1;
+  required uint64 chunk_index = 2;
+}
+message FileChecksumChunkReferences {
+ required bytes file_checksum = 1;
+ repeated ChunkReference chunk_references = 2; 
+}
+message FileChecksumStorageHostChunkLists {
+  repeated StorageHostChunkList storage_host_chunk_list = 1;
+  repeated FileChecksumChunkReferences file_checksum_chunk_references = 2;
+}
+message FileGroups {
+  repeated FileChecksumStorageHostChunkLists file_groups = 1;
+  repeated FileError file_error = 2;
+  repeated FileChunkError file_chunk_error = 3;
+  optional uint32 verbosity_level = 4;
+}
+message ChunkChecksumList {
+  repeated bytes chunk_checksum = 1;
+}
+message StorageHostChunkList {
+  required HostInfo host_info = 1;
+  repeated ChunkInfo chunk_info = 2;
+  required string storage_container_key = 3;
+  required string storage_container_authorization_token = 4;
+}
+message StorageHostChunkLists {
+  repeated StorageHostChunkList storage_host_chunk_list = 1;
+  repeated ChunkError chunk_error = 2;
+}
+
