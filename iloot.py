@@ -151,14 +151,14 @@ class MobileBackupClient(object):
         tokens = decode_protobuf_array(z, MBSFileAuthToken)
         z = MBSFileAuthTokens()
 
-        for t in tokens:
+        for token in tokens:
             toto = z.tokens.add()
-            toto.FileID = h[t.FileID]
-            toto.AuthToken = t.AuthToken
+            toto.FileID = h[token.FileID]
+            toto.AuthToken = token.AuthToken
 
         return z
 
-    def authorizeGet(self, tokens, snapshot):
+    def authorize_get(self, tokens, snapshot):
         self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
         body = tokens.SerializeToString()
 
@@ -166,7 +166,7 @@ class MobileBackupClient(object):
         filechunks = {}
         for group in filegroups.file_groups:
             for container_index, chunk in enumerate(group.storage_host_chunk_list):
-                data = self.downloadChunks(chunk)
+                data = self.download_chunks(chunk)
                 for file_ref in group.file_checksum_chunk_references:
                     if not self.files.has_key(file_ref.file_checksum):
                         continue
@@ -178,8 +178,8 @@ class MobileBackupClient(object):
                             decrypted_chunks[i] = data[reference.chunk_index]
 
                     if len(decrypted_chunks) == len(file_ref.chunk_references):
-                        f = self.files[file_ref.file_checksum]
-                        self.write_file(f, decrypted_chunks, snapshot)
+                        file = self.files[file_ref.file_checksum]
+                        self.write_file(file, decrypted_chunks, snapshot)
                         del self.files[file_ref.file_checksum]
 
         return filegroups
@@ -189,7 +189,7 @@ class MobileBackupClient(object):
         body = ""
         probobuf_request(self.content_host, "POST", "/%d/getComplete" % self.dsPrsID, body, self.headers2)
 
-    def downloadChunks(self, storage_host):
+    def download_chunks(self, storage_host):
         headers = {}
         for h in storage_host.host_info.headers:
             headers[h.name] = h.value
@@ -199,7 +199,6 @@ class MobileBackupClient(object):
                          storage_host.host_info.uri, "", headers)
         decrypted = []
         i = 0
-
         for chunk in storage_host.chunk_info:
             dchunk = decrypt_chunk(d[i:i+chunk.chunk_length], chunk.chunk_encryption_key, chunk.chunk_checksum)
             if dchunk:
@@ -240,11 +239,11 @@ class MobileBackupClient(object):
                     print "Failed to unwrap file key for file %s !!!" % f.RelativePath
                 else:
                     print "\tfilekey",filekey.encode("hex")
-                    self.decryptProtectedFile(path, filekey, f.Attributes.DecryptedSize)
+                    self.decrypt_protected_file(path, filekey, f.Attributes.DecryptedSize)
             else:
                 print "\tUnable to decrypt file, possible old backup format", f.RelativePath
 
-    def decryptProtectedFile(self, path, filekey, decrypted_size=0):
+    def decrypt_protected_file(self, path, filekey, decrypted_size=0):
         ivkey = hashlib.sha1(filekey).digest()[:16]
         hash = hashlib.sha1()
         sz = os.path.getsize(path)
@@ -311,20 +310,26 @@ class MobileBackupClient(object):
             files = self.listFiles(backupUDID, snapshot)
             print "Files in snapshot %s : %s" % (snapshot,len(files))
             files2 = []
-            if fast=='y':
+
+            if fast == 'y':
                 for f in files:
-                    if 'AddressBook.sqlitedb' in f.RelativePath or 'Calendar.sqlitedb' in f.RelativePath or 'sms.db' in f.RelativePath or 'call_history.db' in f.RelativePath or '.JPG'  in f.RelativePath :
+                    if 'AddressBook.sqlitedb' in f.RelativePath \
+                            or 'Calendar.sqlitedb' in f.RelativePath \
+                            or 'sms.db' in f.RelativePath \
+                            or 'call_history.db' in f.RelativePath \
+                            or '.JPG'  in f.RelativePath :
+
                         files2.append(f)
+
                 files = files2
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
-                    self.authorizeGet(authTokens,snapshot)
+                    self.authorize_get(authTokens,snapshot)
 
             if fast=='n':
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
-                    #print authTokens
-                    self.authorizeGet(authTokens,snapshot)
+                    self.authorize_get(authTokens,snapshot)
 
 
 def download_backup(login, password, outputFolder):
