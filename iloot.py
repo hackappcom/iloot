@@ -158,28 +158,28 @@ class MobileBackupClient(object):
 
         return z
 
-    def authorizeGet(self, tokens,snapshot):
+    def authorizeGet(self, tokens, snapshot):
         self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
         body = tokens.SerializeToString()
 
         filegroups = probobuf_request(self.content_host, "POST", "/%d/authorizeGet" % self.dsPrsID, body, self.headers2, FileGroups)
         filechunks = {}
         for group in filegroups.file_groups:
-            for container_index in xrange(len(group.storage_host_chunk_list)):
-                data = self.downloadChunks(group.storage_host_chunk_list[container_index])
+            for container_index, chunk in enumerate(group.storage_host_chunk_list):
+                data = self.downloadChunks(chunk)
                 for file_ref in group.file_checksum_chunk_references:
                     if not self.files.has_key(file_ref.file_checksum):
                         continue
 
                     decrypted_chunks = filechunks.setdefault(file_ref.file_checksum, {})
 
-                    for i, ref in enumerate(file_ref.chunk_references):
-                        if ref.container_index == container_index:
-                            decrypted_chunks[i] = data[ref.chunk_index]
+                    for i, reference in enumerate(file_ref.chunk_references):
+                        if reference.container_index == container_index:
+                            decrypted_chunks[i] = data[reference.chunk_index]
 
                     if len(decrypted_chunks) == len(file_ref.chunk_references):
                         f = self.files[file_ref.file_checksum]
-                        self.writeFile(f, decrypted_chunks,snapshot)
+                        self.write_file(f, decrypted_chunks, snapshot)
                         del self.files[file_ref.file_checksum]
 
         return filegroups
@@ -208,7 +208,7 @@ class MobileBackupClient(object):
 
         return decrypted
 
-    def writeFile(self, f, decrypted_chunks,snapshot):
+    def write_file(self, f, decrypted_chunks,snapshot):
         if not os.path.exists(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain))):
             os.makedirs(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
 
@@ -223,16 +223,16 @@ class MobileBackupClient(object):
 
         # If file is encrypted
         if f.Attributes.EncryptionKey:
-            EncryptionKey = f.Attributes.EncryptionKey
-            ProtectionClass = struct.unpack(">L", EncryptionKey[0x18:0x1C])[0]
+            key = f.Attributes.EncryptionKey
+            ProtectionClass = struct.unpack(">L", key[0x18:0x1C])[0]
             if ProtectionClass == f.Attributes.ProtectionClass:
                 if f.Attributes.EncryptionKeyVersion and f.Attributes.EncryptionKeyVersion == 2:
-                    assert self.kb.uuid == EncryptionKey[:0x10]
-                    keyLength = struct.unpack(">L", EncryptionKey[0x20:0x24])[0]
+                    assert self.kb.uuid == key[:0x10]
+                    keyLength = struct.unpack(">L", key[0x20:0x24])[0]
                     assert keyLength == 0x48
-                    wrapped_key = EncryptionKey[0x24:]
+                    wrapped_key = key[0x24:]
                 else:
-                    wrapped_key = EncryptionKey[0x1C:]
+                    wrapped_key = key[0x1C:]
 
                 filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
 
@@ -243,9 +243,8 @@ class MobileBackupClient(object):
                     self.decryptProtectedFile(path, filekey, f.Attributes.DecryptedSize)
             else:
                 print "\tUnable to decrypt file, possible old backup format", f.RelativePath
-                #hexdump(EncryptionKey)
 
-    def decryptProtectedFile(self, path, filekey, DecryptedSize=0):
+    def decryptProtectedFile(self, path, filekey, decrypted_size=0):
         ivkey = hashlib.sha1(filekey).digest()[:16]
         hash = hashlib.sha1()
         sz = os.path.getsize(path)
@@ -259,7 +258,7 @@ class MobileBackupClient(object):
         with open(oldpath, "wb") as old_file:
             with open(path, "wb") as new_file:
                 n = sz / 0x1000
-                if DecryptedSize:
+                if decrypted_size:
                     n += 1
 
                 for block in xrange(n):
@@ -268,12 +267,12 @@ class MobileBackupClient(object):
                     hash.update(old_data)
                     new_file.write(AESdecryptCBC(old_data, filekey, iv))
 
-                if DecryptedSize == 0: #old iOS 5 format
+                if decrypted_size == 0: #old iOS 5 format
                     trailer = old_file.read(0x1C)
-                    DecryptedSize = struct.unpack(">Q", trailer[:8])[0]
+                    decrypted_size = struct.unpack(">Q", trailer[:8])[0]
                     assert hash.digest() == trailer[8:]
 
-                new_file.truncate(DecryptedSize)
+                new_file.truncate(decrypted_size)
 
     def computeIV(self, lba):
         iv = ""
