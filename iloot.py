@@ -37,35 +37,37 @@ def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
     if chunk_checksum[1:] == chunk_signature(clear):
         return clear
     print "chunk decryption Failed"
+
     return None
 
 def plist_request(host, method, url, body, headers):
-    h = HTTPSConnection(host)
-    r = h.request(method, url, body, headers)
-    res = h.getresponse()
-    if res.status != 200:
-        print "Request %s returned code %d" % (url, res.status)
+    conn = HTTPSConnection(host)
+    request = h.request(method, url, body, headers)
+    response = h.getresponse()
+    if response.status != 200:
+        print "Request %s returned code %d" % (url, response.status)
         return
 
-    return plistlib.readPlistFromString(res.read())
+    return plistlib.readPlistFromString(response.read())
 
 def probobuf_request(host, method, url, body, headers, msg=None):
-    h = HTTPSConnection(host)
-    r = h.request(method, url, body, headers)
-    res = h.getresponse()
-    length = res.getheader("content-length")
+    conn = HTTPSConnection(host)
+    request = conn.request(method, url, body, headers)
+    response = conn.getresponse()
+    length = response.getheader("content-length")
+
     if length is None:
         length = 0
     else:
         length = int(length)
 
-    data = res.read()
+    data = response.read()
 
     while len(data) < length:
-        d = res.read()
+        d = response.read()
         data += d
 
-    h.close()
+    conn.close()
     if msg == None:
         return data
 
