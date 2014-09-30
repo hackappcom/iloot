@@ -79,10 +79,10 @@ class Keybag(object):
         #HAX: inject DKey
         keybag.setDKey(pldict)
         return keybag
-    
+
     def setDKey(self, device_infos):
         self.classKeys[4] = {"CLAS": 4, "KEY": device_infos["DKey"].decode("hex")}
-        
+
     @staticmethod
     def createWithSystemkbfile(filename, bag1key, deviceKey=None):
         if filename.startswith("bplist"): #HAX
@@ -105,16 +105,16 @@ class Keybag(object):
             kb.passcodeComplexity = OpaqueStuff.get("keyboardType")
         return kb
 
-    
+
     @staticmethod
     def createWithDataSignBlob(blob, deviceKey=None):
         keybag = tlvToDict(blob)
-        
+
         kb = Keybag(keybag.get("DATA", ""))
         kb.deviceKey = deviceKey
         kb.KeyBagKeys = blob
         kb.unlockAlwaysAccessible()
-        
+
         if len(keybag.get("SIGN", "")):
             hmackey = AESUnwrap(deviceKey, kb.attrs["HMCK"])
             #hmac key and data are swapped (on purpose or by mistake ?)
@@ -125,7 +125,7 @@ class Keybag(object):
             if sigcheck != keybag.get("SIGN", ""):
                 print "Keybag: SIGN check FAIL"
         return kb
-    
+
     @staticmethod
     def createWithBackupManifest(manifest, password, deviceKey=None):
         kb = Keybag(manifest["BackupKeyBag"].data)
@@ -134,13 +134,13 @@ class Keybag(object):
             print "Cannot decrypt backup keybag. Wrong password ?"
             return
         return kb
-    
+
     def isBackupKeybag(self):
         return self.type == BACKUP_KEYBAG
-    
+
     def parseBinaryBlob(self, data):
         currentClassKey = None
-        
+
         for tag, data in loopTLVBlocks(data):
             if len(data) == 4:
                 data = struct.unpack(">L", data)[0]
@@ -169,7 +169,7 @@ class Keybag(object):
         else:
             #Warning, need to run derivation on device with this result
             return PBKDF2(passcode, self.attrs["SALT"], iterations=1).read(32)
-    
+
     def unlockBackupKeybagWithPasscode(self, passcode):
         if self.type != BACKUP_KEYBAG and self.type != OTA_KEYBAG:
             print "unlockBackupKeybagWithPasscode: not a backup keybag"
@@ -185,7 +185,7 @@ class Keybag(object):
                 k = AESdecryptCBC(k, self.deviceKey)
                 classkey["KEY"] = k
         return True
-                 
+
     def unlockWithPasscodeKey(self, passcodekey):
         if self.type != BACKUP_KEYBAG and self.type != OTA_KEYBAG:
             if not self.deviceKey:
@@ -236,7 +236,7 @@ class Keybag(object):
             return ""
         ck = self.classKeys[clas]["KEY"]
         return AESwrap(ck, persistent_key)
-    
+
     def printClassKeys(self):
         print "Keybag type : %s keybag (%d)" % (KEYBAG_TYPES[self.type], self.type)
         print "Keybag version : %d" % self.attrs["VERS"]

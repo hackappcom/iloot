@@ -49,15 +49,15 @@ class EffaceableLockers(object):
             tag = l.tag.int & ~0x80000000
             tag = struct.pack("<L", tag)[::-1]
             self.lockers[tag] = l.data
-    
+
     def display(self):
         print "Lockers : " + ", ".join(sorted(self.lockers.keys()))
 
     def get(self, tag):
         return self.lockers.get(tag)
-    
+
     def get_DKey(self, k835):
-        if self.lockers.has_key("Dkey"):        
+        if self.lockers.has_key("Dkey"):
             return AESUnwrap(k835, self.lockers["Dkey"])
 
     def get_EMF(self, k89b):
@@ -66,4 +66,4 @@ class EffaceableLockers(object):
             return lwvm[-32:]
         elif self.lockers.has_key("EMF!"):
             return AESdecryptCBC(self.lockers["EMF!"][4:], k89b)
-            
+

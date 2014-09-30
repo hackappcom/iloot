@@ -41,7 +41,7 @@ _DecodeVarint = _VarintDecoder((1 << 64) - 1)
 
 def _VarintEncoder():
     """Return an encoder for a basic varint value (does not include tag)."""
-    
+
     local_chr = chr
     def EncodeVarint( value):
         bits = value & 0x7f
@@ -52,7 +52,7 @@ def _VarintEncoder():
             bits = value & 0x7f
             value >>= 7
         return z + local_chr(bits)
-    
+
     return EncodeVarint
 
 _EncodeVarint = _VarintEncoder()

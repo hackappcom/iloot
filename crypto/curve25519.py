@@ -62,7 +62,7 @@ if __name__ == "__main__":
     #c4d9fe462a2ebbf0745195ce7dc5e8b49947bbd5b42da74175d5f8125b44582b
     shared = curve25519(mysecret, hispublic)
     print shared.encode("hex")
-    
+
     h = SHA256.new()
     h.update('\x00\x00\x00\x01')
     h.update(shared)

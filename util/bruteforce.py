@@ -17,7 +17,7 @@ def checkPasscodeComplexity(data_volume):
     pl = plistlib.readPlistFromString(pl)
     #print "passcodeKeyboardComplexity :", pl["restrictedValue"]["passcodeKeyboardComplexity"]
     value =  pl["restrictedValue"]["passcodeKeyboardComplexity"]["value"]
-    print "passcodeKeyboardComplexity %d => %s" % (value, COMPLEXITY.get(value)) 
+    print "passcodeKeyboardComplexity %d => %s" % (value, COMPLEXITY.get(value))
     return pl["restrictedValue"]["passcodeKeyboardComplexity"]["value"]
 
 def loadKeybagFromVolume(volume, device_infos):
@@ -40,12 +40,12 @@ def bruteforcePasscode(device_infos, data_volume):
     kb = data_volume.keybag
     if not kb:
         return False
-    
+
     rd = RamdiskToolClient.get()
     if rd.device_infos.udid != device_infos.udid:
         print "Wrong device connected"
         return
-    
+
     print "Passcode comlexity (from OpaqueStuff) : %s" % COMPLEXITY.get(kb.passcodeComplexity)
     print "Enter passcode or leave blank for bruteforce:"
     z = raw_input()
