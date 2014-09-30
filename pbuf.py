@@ -24,7 +24,7 @@ def _VarintDecoder(mask):
     def DecodeVarint(buffer, pos):
         result = 0
         shift = 0
-        while 1:
+        while True:
             b = local_ord(buffer[pos])
             result |= ((b & 0x7f) << shift)
             pos += 1

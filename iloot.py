@@ -1,15 +1,18 @@
-import base64
+#!/usr/bin/env python
+
+# from __future__ import print_function
+
 from datetime import datetime
+from httplib import HTTPSConnection
+from pprint import pprint
+import base64
 import getpass
 import hashlib
-from httplib import HTTPSConnection
 import os
 import plistlib
-from pprint import pprint
 import re
 import struct
 import sys
-
 
 from chunkserver_pb2 import FileGroups
 from crypto.aes import AESencryptCBC, AESdecryptCBC, AESdecryptCFB
@@ -43,6 +46,7 @@ def plist_request(host, method, url, body, headers):
     if res.status != 200:
         print "Request %s returned code %d" % (url, res.status)
         return
+
     return plistlib.readPlistFromString(res.read())
 
 def probobuf_request(host, method, url, body, headers, msg=None):
@@ -50,15 +54,21 @@ def probobuf_request(host, method, url, body, headers, msg=None):
     r = h.request(method, url, body, headers)
     res = h.getresponse()
     length = res.getheader("content-length")
-    if length == None: length = 0
-    else: length = int(length)
+    if length is None:
+        length = 0
+    else:
+        length = int(length)
+
     data = res.read()
+
     while len(data) < length:
         d = res.read()
         data += d
+
     h.close()
     if msg == None:
         return data
+
     res = msg()
     res.ParseFromString(data)
     return res
@@ -100,7 +110,7 @@ class MobileBackupClient(object):
     def getAccount(self):
         return self.mobileBackupRequest("GET", "/mbs/%d" % self.dsPrsID, MBSAccount)
 
-    def getBackup(self, backupUDID):
+    def get_backup(self, backupUDID):
         return self.mobileBackupRequest("GET", "/mbs/%d/%s" % (self.dsPrsID, backupUDID.encode("hex")), MBSBackup)
 
     def getKeys(self, backupUDID):
@@ -108,40 +118,42 @@ class MobileBackupClient(object):
 
     def listFiles(self, backupUDID, snapshotId):
         files = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=0&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId))
-        i = 100
+        offset = 100
         files2 = 1
         while files2:
-
-
-            files2 = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId,str(i)))
+            files2 = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId, str(offset)))
             if files2:
-                i = i + 100
+                offset += 100
                 files = files + files2
-                print "\tShifting offset: ", i
+                print "\tShifting offset: ", offset
 
         #print files
 
         return decode_protobuf_array(files, MBSFile)
 
-    def getFiles(self, backupUDID, snapshotId, files):
+    def get_files(self, backupUDID, snapshotId, files):
         r = []
         h = {}
-        for f in files:
-            if f.Size == 0:
+        for file in files:
+            if file.Size == 0:
                 continue
+
             ff = MBSFile()
-            ff.FileID = f.FileID
-            h[f.FileID] = f.Signature
+            ff.FileID = file.FileID
+            h[file.FileID] = file.Signature
             r.append(ff)
-            self.files[f.Signature] = f
+            self.files[file.Signature] = f
+
         body = encode_protobuf_array(r)
         z = self.mobileBackupRequest("POST", "/mbs/%d/%s/%d/getFiles" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId), None, body)
         tokens = decode_protobuf_array(z, MBSFileAuthToken)
         z = MBSFileAuthTokens()
+
         for t in tokens:
             toto = z.tokens.add()
             toto.FileID = h[t.FileID]
             toto.AuthToken = t.AuthToken
+
         return z
 
     def authorizeGet(self, tokens,snapshot):
@@ -149,7 +161,6 @@ class MobileBackupClient(object):
         body = tokens.SerializeToString()
 
         filegroups = probobuf_request(self.content_host, "POST", "/%d/authorizeGet" % self.dsPrsID, body, self.headers2, FileGroups)
-        #print filegroups
         filechunks = {}
         for group in filegroups.file_groups:
             for container_index in xrange(len(group.storage_host_chunk_list)):
@@ -157,11 +168,13 @@ class MobileBackupClient(object):
                 for file_ref in group.file_checksum_chunk_references:
                     if not self.files.has_key(file_ref.file_checksum):
                         continue
+
                     decrypted_chunks = filechunks.setdefault(file_ref.file_checksum, {})
-                    for i in xrange(len(file_ref.chunk_references)):
-                        ref = file_ref.chunk_references[i]
+
+                    for i, ref in enumerate(file_ref.chunk_references):
                         if ref.container_index == container_index:
                             decrypted_chunks[i] = data[ref.chunk_index]
+
                     if len(decrypted_chunks) == len(file_ref.chunk_references):
                         f = self.files[file_ref.file_checksum]
                         self.writeFile(f, decrypted_chunks,snapshot)
@@ -169,7 +182,7 @@ class MobileBackupClient(object):
 
         return filegroups
 
-    def getComplete(self, mmcs_auth):
+    def get_complete(self, mmcs_auth):
         self.headers2["x-apple-mmcs-auth"] = mmcs_auth
         body = ""
         probobuf_request(self.content_host, "POST", "/%d/getComplete" % self.dsPrsID, body, self.headers2)
@@ -178,16 +191,19 @@ class MobileBackupClient(object):
         headers = {}
         for h in storage_host.host_info.headers:
             headers[h.name] = h.value
+
         d = probobuf_request(storage_host.host_info.hostname,
                          storage_host.host_info.method,
                          storage_host.host_info.uri, "", headers)
         decrypted = []
         i = 0
+
         for chunk in storage_host.chunk_info:
             dchunk = decrypt_chunk(d[i:i+chunk.chunk_length], chunk.chunk_encryption_key, chunk.chunk_checksum)
             if dchunk:
                 decrypted.append(dchunk)
                 i += chunk.chunk_length
+
         return decrypted
 
     def writeFile(self, f, decrypted_chunks,snapshot):
@@ -195,18 +211,15 @@ class MobileBackupClient(object):
             os.makedirs(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
 
         path = os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain+"/"+f.RelativePath))
-        #print '\t',f
-        print '\t',f.Domain,'\t',path
+        print '\t', f.Domain, '\t', path
         makedirs(os.path.dirname(path))
-        ff = open(path, "wb")
-        h = hashlib.sha1()
-        for i in xrange(len(decrypted_chunks)):
-            d = decrypted_chunks[i]
-            h.update(d)
-            ff.write(d)
-        ff.close()
+        with open(path, "wb") as ff:
+            hash = hashlib.sha1()
+            for chunk in decrypted_chunks:
+                hash.update(chunk)
+                ff.write(chunk)
 
-        #If file is encrypted
+        # If file is encrypted
         if f.Attributes.EncryptionKey:
             EncryptionKey = f.Attributes.EncryptionKey
             ProtectionClass = struct.unpack(">L", EncryptionKey[0x18:0x1C])[0]
@@ -218,7 +231,9 @@ class MobileBackupClient(object):
                     wrapped_key = EncryptionKey[0x24:]
                 else:
                     wrapped_key = EncryptionKey[0x1C:]
+
                 filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
+
                 if not filekey:
                     print "Failed to unwrap file key for file %s !!!" % f.RelativePath
                 else:
@@ -230,32 +245,33 @@ class MobileBackupClient(object):
 
     def decryptProtectedFile(self, path, filekey, DecryptedSize=0):
         ivkey = hashlib.sha1(filekey).digest()[:16]
-        h = hashlib.sha1()
+        hash = hashlib.sha1()
         sz = os.path.getsize(path)
-        #iOS 5 trailer = uint64 sz + sha1 of encrypted file
-        #assert (sz % 0x1000) == 0x1C
+
         oldpath = path + ".encrypted"
         try:
             os.rename(path, oldpath)
         except:
             pass
-        f1 = open(oldpath, "rb")
-        f2 = open(path, "wb")
-        n = (sz / 0x1000)
-        if DecryptedSize:
-            n += 1
-        for block in xrange(n):
-            iv = AESencryptCBC(self.computeIV(block * 0x1000), ivkey)
-            data = f1.read(0x1000)
-            h.update(data)
-            f2.write(AESdecryptCBC(data, filekey, iv))
-        if DecryptedSize == 0: #old iOS 5 format
-            trailer = f1.read(0x1C)
-            DecryptedSize = struct.unpack(">Q", trailer[:8])[0]
-            assert h.digest() == trailer[8:]
-        f1.close()
-        f2.truncate(DecryptedSize)
-        f2.close()
+
+        with open(oldpath, "wb") as old_file:
+            with open(path, "wb") as new_file:
+                n = sz / 0x1000
+                if DecryptedSize:
+                    n += 1
+
+                for block in xrange(n):
+                    iv = AESencryptCBC(self.computeIV(block * 0x1000), ivkey)
+                    old_data = old_file.read(0x1000)
+                    hash.update(old_data)
+                    new_file.write(AESdecryptCBC(old_data, filekey, iv))
+
+                if DecryptedSize == 0: #old iOS 5 format
+                    trailer = old_file.read(0x1C)
+                    DecryptedSize = struct.unpack(">Q", trailer[:8])[0]
+                    assert hash.digest() == trailer[8:]
+
+                new_file.truncate(DecryptedSize)
 
     def computeIV(self, lba):
         iv = ""
@@ -265,27 +281,28 @@ class MobileBackupClient(object):
                 lba = 0x80000061 ^ (lba >> 1);
             else:
                 lba = lba >> 1;
+
             iv += struct.pack("<L", lba)
+
         return iv
 
     def download(self,backupUDID,fast):
-        mbsbackup = self.getBackup(backupUDID)
+        mbsbackup = self.get_backup(backupUDID)
         print "Downloading backup %s" % backupUDID.encode("hex")
         self.outputFolder = os.path.join(self.outputFolder, backupUDID.encode("hex"))
         makedirs(self.outputFolder)
-        #print backup_summary(mbsbackup)
-        #print mbsbackup.Snapshot.Attributes.KeybagUUID.encode("hex")
+
         keys = self.getKeys(backupUDID)
         if not keys or not len(keys.Key):
             print "getKeys FAILED!"
             return
+
         print "Got OTA Keybag"
 
         self.kb = Keybag(keys.Key[1].KeyData)
         if not self.kb.unlockBackupKeybagWithPasscode(keys.Key[0].KeyData):
             print "Unable to unlock OTA keybag !"
             return
-
 
         print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
         for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
@@ -299,18 +316,14 @@ class MobileBackupClient(object):
                         files2.append(f)
                 files = files2
                 if len(files):
-                    authTokens = self.getFiles(backupUDID, snapshot, files)
-                    #print authTokens
+                    authTokens = self.get_files(backupUDID, snapshot, files)
                     self.authorizeGet(authTokens,snapshot)
-
 
             if fast=='n':
                 if len(files):
-                    authTokens = self.getFiles(backupUDID, snapshot, files)
+                    authTokens = self.get_files(backupUDID, snapshot, files)
                     #print authTokens
                     self.authorizeGet(authTokens,snapshot)
-
-
 
 
 def download_backup(login, password, outputFolder):
@@ -331,15 +344,14 @@ def download_backup(login, password, outputFolder):
 
     mbsacct = client.getAccount()
 
-
     i = 0
     print "Available Devices: ",len(mbsacct.backupUDID)
     for device in mbsacct.backupUDID:
         print "===[",i,"]==="
-        print "\tUDID: ",client.getBackup(device).backupUDID.encode("hex")
-        print "\tDevice: ",client.getBackup(device).Attributes.MarketingName
-        print "\tSize: ",sizeof_fmt(client.getBackup(device).QuotaUsed)
-        print "\tLastUpdate: ",datetime.utcfromtimestamp(client.getBackup(device).Snapshot.LastModified)
+        print "\tUDID: ",client.get_backup(device).backupUDID.encode("hex")
+        print "\tDevice: ",client.get_backup(device).Attributes.MarketingName
+        print "\tSize: ",sizeof_fmt(client.get_backup(device).QuotaUsed)
+        print "\tLastUpdate: ",datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
         i = i+1
 
 
@@ -348,12 +360,9 @@ def download_backup(login, password, outputFolder):
     fast = raw_input("\nDownload only AddressBook,SMS,Photos (y/n): ")
     client.download(mbsacct.backupUDID[int(id)],fast)
 
-
 def backup_summary(mbsbackup):
     d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
     return "%s %s %s %s" % (str(d), mbsbackup.Attributes.MarketingName, mbsbackup.Snapshot.Attributes.DeviceName, mbsbackup.Snapshot.Attributes.ProductVersion)
-
-
 
 appleid = sys.argv[1]
 password = sys.argv[2]
