@@ -1,9 +1,10 @@
-import glob
-import plistlib
-import os
-from bplist import BPlistReader
 import cPickle
+import glob
 import gzip
+import os
+import plistlib
+
+from bplist import BPlistReader
 
 def read_file(filename):
     f = open(filename, "rb")
@@ -16,17 +17,12 @@ def write_file(filename,data):
     f.write(data)
     f.close()
 
-def makedirs(dirs):
-    try:
-        os.makedirs(dirs)
-    except:
-        pass
-
 def getHomePath(foldername, filename):
     home = os.path.expanduser('~')
     folderpath = os.path.join(home, foldername)
     if not os.path.exists(folderpath):
-        makedirs(folderpath)
+        os.makedirs(folderpath)
+
     return os.path.join(folderpath, filename)
 
 def readHomeFile(foldername, filename):

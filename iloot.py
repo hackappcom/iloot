@@ -19,7 +19,7 @@ from crypto.aes import AESencryptCBC, AESdecryptCBC, AESdecryptCFB
 from icloud_pb2 import MBSAccount, MBSBackup, MBSKeySet, MBSFile, MBSFileAuthToken, MBSFileAuthTokens
 from keystore.keybag import Keybag
 from pbuf import decode_protobuf_array, encode_protobuf_array
-from util import hexdump, makedirs
+from util import hexdump
 
 Client_Info = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
 USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
@@ -76,12 +76,6 @@ def probobuf_request(host, method, url, body, headers, msg=None):
     return res
 
 
-def sizeof_fmt(num):
-    for x in ['bytes','KB','MB','GB','TB']:
-        if num < 1024.0:
-            return "%3.1f %s" % (num, x)
-        num /= 1024.0
-
 class MobileBackupClient(object):
     def __init__(self, account_settings, dsPrsID, auth, outputFolder):
         mobilebackup_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Backup"]["url"]
@@ -90,18 +84,20 @@ class MobileBackupClient(object):
         self.mobilebackup_host = re.match("https://(.*):443", mobilebackup_url).group(1)
         self.content_host = re.match("https://(.*):443", content_url).group(1)
         self.dsPrsID = dsPrsID
-        self.headers = {"Authorization": auth,
-                        "X-MMe-Client-Info": Client_Info,
-                        "User-Agent": USER_AGENT_MOBILE_BACKUP,
-                        "X-Apple-MBS-Protocol-Version": "1.7"
+        self.headers = {
+            'Authorization': auth,
+            'X-MMe-Client-Info': Client_Info,
+            'User-Agent': USER_AGENT_MOBILE_BACKUP,
+            'X-Apple-MBS-Protocol-Version': "1.7"
         }
-        self.headers2 = {"x-apple-mmcs-proto-version": "3.3",
-            "x-apple-mmcs-dataclass": "com.apple.Dataclass.Backup",
-            "x-apple-mme-dsid": str(self.dsPrsID),
-            "User-Agent":USER_AGENT_BACKUPD,
-            "Accept": "application/vnd.com.apple.me.ubchunk+protobuf",
-            "Content-Type": "application/vnd.com.apple.me.ubchunk+protobuf",
-            "x-mme-client-info": Client_Info_backup
+        self.headers2 = {
+            'x-apple-mmcs-proto-version': "3.3",
+            'x-apple-mmcs-dataclass': "com.apple.Dataclass.Backup",
+            'x-apple-mme-dsid': str(self.dsPrsID),
+            'User-Agent': USER_AGENT_BACKUPD,
+            'Accept': "application/vnd.com.apple.me.ubchunk+protobuf",
+            'Content-Type': "application/vnd.com.apple.me.ubchunk+protobuf",
+            'x-mme-client-info': Client_Info_backup
         }
         self.files = {}
         self.outputFolder = outputFolder
@@ -213,7 +209,7 @@ class MobileBackupClient(object):
 
         path = os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain+"/"+f.RelativePath))
         print '\t', f.Domain, '\t', path
-        makedirs(os.path.dirname(path))
+        os.makedirs(os.path.dirname(path))
         with open(path, "wb") as ff:
             hash = hashlib.sha1()
             for chunk in decrypted_chunks:
@@ -290,7 +286,7 @@ class MobileBackupClient(object):
         mbsbackup = self.get_backup(backupUDID)
         print "Downloading backup %s" % backupUDID.encode("hex")
         self.outputFolder = os.path.join(self.outputFolder, backupUDID.encode("hex"))
-        makedirs(self.outputFolder)
+        os.makedirs(self.outputFolder)
 
         keys = self.getKeys(backupUDID)
         if not keys or not len(keys.Key):
@@ -356,7 +352,7 @@ def download_backup(login, password, outputFolder):
         print "===[",i,"]==="
         print "\tUDID: ",client.get_backup(device).backupUDID.encode("hex")
         print "\tDevice: ",client.get_backup(device).Attributes.MarketingName
-        print "\tSize: ",sizeof_fmt(client.get_backup(device).QuotaUsed)
+        print "\tSize: ", hurry.filesize.size(client.get_backup(device).QuotaUsed)
         print "\tLastUpdate: ",datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
         i = i+1
 
