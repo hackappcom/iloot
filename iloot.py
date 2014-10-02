@@ -16,6 +16,7 @@ import re
 import struct
 import sys
 
+import hurry.filesize
 from chunkserver_pb2 import FileGroups
 from crypto.aes import AESencryptCBC, AESdecryptCBC, AESdecryptCFB
 from icloud_pb2 import MBSAccount, MBSBackup, MBSKeySet, MBSFile, MBSFileAuthToken, MBSFileAuthTokens
@@ -27,7 +28,7 @@ Client_Info = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 (
 USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
-Client_Info_backup = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
+CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
 
 #XXX handle all signature types
 def chunk_signature(data):
@@ -81,9 +82,10 @@ def probobuf_request(host, method, url, body, headers, msg=None):
 class URLFactory(object):
     def __init__(self, base=None):
         self.components = []
+        self.base = base
 
-        if base is not None:
-            self.components.append(base)
+        if self.base is not None:
+            self.components.append(self.base)
 
     def __getattr__(self, k):
         self.components.append(k)
@@ -94,7 +96,12 @@ class URLFactory(object):
         return self
 
     def __call__(self, *args, **kwargs):
-        url = "/".join(self.components)
+        url = "/{}".format("/".join(self.components))
+
+        self.components = []
+        if self.base is not None:
+            self.components.append(self.base)
+
         if len(kwargs) > 0:
             params = urllib.urlencode(kwargs)
             return "{}?{}".format(url, params)
@@ -129,8 +136,9 @@ class MobileBackupClient(object):
             'User-Agent': USER_AGENT_BACKUPD,
             'Accept': "application/vnd.com.apple.me.ubchunk+protobuf",
             'Content-Type': "application/vnd.com.apple.me.ubchunk+protobuf",
-            'x-mme-client-info': Client_Info_backup
+            'x-mme-client-info': CLIENT_INFO_BACKUP
         }
+
         self.files = {}
         self.output_folder = output_folder
 
@@ -378,11 +386,12 @@ def download_backup(login, password, output_folder):
     i = 0
     print "Available Devices: ", len(mbsacct.backupUDID)
     for device in mbsacct.backupUDID:
+        backup = client.get_backup(device)
         print "===[", i, "]==="
-        print "\tUDID: ", client.get_backup(device).backupUDID.encode("hex")
-        print "\tDevice: ", client.get_backup(device).Attributes.MarketingName
-        print "\tSize: ", hurry.filesize.size(client.get_backup(device).QuotaUsed)
-        print "\tLastUpdate: ", datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
+        print "\tUDID: ", backup.backupUDID.encode("hex")
+        print "\tDevice: ", backup.Attributes.MarketingName
+        print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
+        print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
         i = i+1
 
     id = raw_input("\nSelect backup to download: ")
