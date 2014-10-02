@@ -24,7 +24,7 @@ from keystore.keybag import Keybag
 from pbuf import decode_protobuf_array, encode_protobuf_array
 from util import hexdump
 
-Client_Info = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
+CLIENT_INFO = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
 USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
@@ -125,7 +125,7 @@ class MobileBackupClient(object):
         self.dsPrsID = dsPrsID
         self.headers = {
             'Authorization': auth,
-            'X-MMe-Client-Info': Client_Info,
+            'X-MMe-Client-Info': CLIENT_INFO,
             'User-Agent': USER_AGENT_MOBILE_BACKUP,
             'X-Apple-MBS-Protocol-Version': "1.7"
         }
@@ -377,25 +377,29 @@ def download_backup(login, password, output_folder):
 
     dsPrsID = authenticateResponse["appleAccountInfo"]["dsPrsID"]
     auth = "Basic %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
-    account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "", {"Authorization": auth, "X-MMe-Client-Info": Client_Info, "User-Agent": USER_AGENT_UBD})
+
+    headers = {
+        'Authorization': auth,
+        'X-MMe-Client-Info': CLIENT_INFO,
+        'User-Agent': USER_AGENT_UBD
+    }
+    account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "", headers)
     auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
     client = MobileBackupClient(account_settings, dsPrsID, auth, output_folder)
 
     mbsacct = client.get_account()
 
-    i = 0
     print "Available Devices: ", len(mbsacct.backupUDID)
-    for device in mbsacct.backupUDID:
+    for i, device in enumerate(mbsacct.backupUDID):
         backup = client.get_backup(device)
         print "===[", i, "]==="
         print "\tUDID: ", backup.backupUDID.encode("hex")
         print "\tDevice: ", backup.Attributes.MarketingName
         print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
         print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
-        i = i+1
 
-    id = raw_input("\nSelect backup to download: ")
-    fast = raw_input("\nDownload only AddressBook,SMS,Photos (y/n): ")
+    id = raw_input("\nSelect backup to download (0-{}): ".format(i))
+    fast = raw_input("\nOnly Download Address Book, SMS, and Photos? (y/n) ")
     client.download(mbsacct.backupUDID[int(id)], fast == "y")
 
 def backup_summary(mbsbackup):
