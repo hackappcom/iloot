@@ -232,7 +232,7 @@ class MobileBackupClient(object):
 
         return decrypted
 
-    def write_file(self, f, decrypted_chunks,snapshot):
+    def write_file(self, f, decrypted_chunks, snapshot):
         if not os.path.exists(os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain))):
             os.makedirs(os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
 
@@ -263,7 +263,7 @@ class MobileBackupClient(object):
                 if not filekey:
                     print "Failed to unwrap file key for file %s !!!" % f.RelativePath
                 else:
-                    print "\tfilekey",filekey.encode("hex")
+                    print "\tfilekey", filekey.encode("hex")
                     self.decrypt_protected_file(path, filekey, f.Attributes.DecryptedSize)
             else:
                 print "\tUnable to decrypt file, possible old backup format", f.RelativePath
@@ -333,7 +333,7 @@ class MobileBackupClient(object):
         for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
             print "Listing snapshot..."
             files = self.list_files(backupUDID, snapshot)
-            print "Files in snapshot %s : %s" % (snapshot,len(files))
+            print "Files in snapshot %s : %s" % (snapshot, len(files))
             files2 = []
 
             if fast:
@@ -349,18 +349,18 @@ class MobileBackupClient(object):
                 files = files2
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
-                    self.authorize_get(authTokens,snapshot)
+                    self.authorize_get(authTokens, snapshot)
             else:
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
-                    self.authorize_get(authTokens,snapshot)
+                    self.authorize_get(authTokens, snapshot)
 
 
 def download_backup(login, password, output_folder):
-    print 'Working with %s : %s' % (login,password)
+    print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
-    auth = "Basic %s" % base64.b64encode("%s:%s" % (login,password))
+    auth = "Basic %s" % base64.b64encode("%s:%s" % (login, password))
     authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "", {"Authorization": auth})
     if not authenticateResponse:
         print "Invalid Apple ID/password ?"
@@ -375,13 +375,13 @@ def download_backup(login, password, output_folder):
     mbsacct = client.get_account()
 
     i = 0
-    print "Available Devices: ",len(mbsacct.backupUDID)
+    print "Available Devices: ", len(mbsacct.backupUDID)
     for device in mbsacct.backupUDID:
         print "===[",i,"]==="
-        print "\tUDID: ",client.get_backup(device).backupUDID.encode("hex")
-        print "\tDevice: ",client.get_backup(device).Attributes.MarketingName
+        print "\tUDID: ", client.get_backup(device).backupUDID.encode("hex")
+        print "\tDevice: ", client.get_backup(device).Attributes.MarketingName
         print "\tSize: ", hurry.filesize.size(client.get_backup(device).QuotaUsed)
-        print "\tLastUpdate: ",datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
+        print "\tLastUpdate: ", datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
         i = i+1
 
     id = raw_input("\nSelect backup to download: ")
