@@ -2,6 +2,7 @@
 
 # from __future__ import print_function
 
+import urlparse
 import argparse
 from datetime import datetime
 from httplib import HTTPSConnection
@@ -43,8 +44,8 @@ def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
 
 def plist_request(host, method, url, body, headers):
     conn = HTTPSConnection(host)
-    request = h.request(method, url, body, headers)
-    response = h.getresponse()
+    request = conn.request(method, url, body, headers)
+    response = conn.getresponse()
     if response.status != 200:
         print "Request %s returned code %d" % (url, response.status)
         return
@@ -368,7 +369,7 @@ def download_backup(login, password, output_folder):
 
     dsPrsID = authenticateResponse["appleAccountInfo"]["dsPrsID"]
     auth = "Basic %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
-    account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "",{"Authorization": auth, "X-MMe-Client-Info": Client_Info, "User-Agent": USER_AGENT_UBD})
+    account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "", {"Authorization": auth, "X-MMe-Client-Info": Client_Info, "User-Agent": USER_AGENT_UBD})
     auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
     client = MobileBackupClient(account_settings, dsPrsID, auth, output_folder)
 
@@ -377,7 +378,7 @@ def download_backup(login, password, output_folder):
     i = 0
     print "Available Devices: ", len(mbsacct.backupUDID)
     for device in mbsacct.backupUDID:
-        print "===[",i,"]==="
+        print "===[", i, "]==="
         print "\tUDID: ", client.get_backup(device).backupUDID.encode("hex")
         print "\tDevice: ", client.get_backup(device).Attributes.MarketingName
         print "\tSize: ", hurry.filesize.size(client.get_backup(device).QuotaUsed)
@@ -394,8 +395,8 @@ def backup_summary(mbsbackup):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='iloot')
-    parser.add_argument("--apple_id", type=str, default=None, help="Apple ID")
-    parser.add_argument("--password", type=str, default=None, help="Password")
+    parser.add_argument("apple_id", type=str, default=None, help="Apple ID")
+    parser.add_argument("password", type=str, default=None, help="Password")
     parser.add_argument("--output", "-o", type=str, default="output", help="Output Directory")
 
     args = parser.parse_args()
