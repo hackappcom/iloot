@@ -104,13 +104,16 @@ class URLFactory(object):
 MBS = URLFactory("mbs")
 URL = URLFactory()
 
+def host_from_url(url):
+    return urlparse.urlparse(url).hostname
+
 class MobileBackupClient(object):
-    def __init__(self, account_settings, dsPrsID, auth, outputFolder):
+    def __init__(self, account_settings, dsPrsID, auth, output_folder):
         mobilebackup_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Backup"]["url"]
         content_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Content"]["url"]
 
-        self.mobilebackup_host = re.match("https://(.*):443", mobilebackup_url).group(1)
-        self.content_host = re.match("https://(.*):443", content_url).group(1)
+        self.mobilebackup_host = host_from_url(mobilebackup_url)
+        self.content_host = host_from_url(content_url)
         self.dsPrsID = dsPrsID
         self.headers = {
             'Authorization': auth,
@@ -128,32 +131,30 @@ class MobileBackupClient(object):
             'x-mme-client-info': Client_Info_backup
         }
         self.files = {}
-        self.outputFolder = outputFolder
+        self.output_folder = output_folder
 
-    def mobileBackupRequest(self, method, url, msg=None, body=""):
+    def mobile_backup_request(self, method, url, msg=None, body=""):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
 
-    def getAccount(self):
-        return self.mobileBackupRequest("GET", MBS[self.dsPrsID](), MBSAccount)
+    def get_account(self):
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID](), MBSAccount)
 
     def get_backup(self, backupUDID):
-        return self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")](), MBSBackup)
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")](), MBSBackup)
 
-    def getKeys(self, backupUDID):
-        return self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")].getKeys(), MBSKeySet)
+    def get_keys(self, backupUDID):
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")].getKeys(), MBSKeySet)
 
-    def listFiles(self, backupUDID, snapshotId):
-        files = self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=0, limit=100))
+    def list_files(self, backupUDID, snapshotId):
+        files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=0, limit=100))
         offset = 100
         files2 = 1
         while files2:
-            files2 = self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=100))
+            files2 = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=100))
             if files2:
                 offset += 100
                 files = files + files2
                 print "\tShifting offset: ", offset
-
-        #print files
 
         return decode_protobuf_array(files, MBSFile)
 
@@ -171,7 +172,7 @@ class MobileBackupClient(object):
             self.files[file.Signature] = f
 
         body = encode_protobuf_array(r)
-        z = self.mobileBackupRequest("POST", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].getFiles(), None, body)
+        z = self.mobile_backup_request("POST", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].getFiles(), None, body)
         tokens = decode_protobuf_array(z, MBSFileAuthToken)
         z = MBSFileAuthTokens()
 
@@ -232,10 +233,10 @@ class MobileBackupClient(object):
         return decrypted
 
     def write_file(self, f, decrypted_chunks,snapshot):
-        if not os.path.exists(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain))):
-            os.makedirs(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
+        if not os.path.exists(os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain))):
+            os.makedirs(os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
 
-        path = os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain+"/"+f.RelativePath))
+        path = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain+"/"+f.RelativePath))
         print '\t', f.Domain, '\t', path
         os.makedirs(os.path.dirname(path))
         with open(path, "wb") as ff:
@@ -310,15 +311,15 @@ class MobileBackupClient(object):
 
         return iv
 
-    def download(self,backupUDID,fast):
+    def download(self, backupUDID, fast):
         mbsbackup = self.get_backup(backupUDID)
         print "Downloading backup %s" % backupUDID.encode("hex")
-        self.outputFolder = os.path.join(self.outputFolder, backupUDID.encode("hex"))
-        os.makedirs(self.outputFolder)
+        self.output_folder = os.path.join(self.output_folder, backupUDID.encode("hex"))
+        os.makedirs(self.output_folder)
 
-        keys = self.getKeys(backupUDID)
+        keys = self.get_keys(backupUDID)
         if not keys or not len(keys.Key):
-            print "getKeys FAILED!"
+            print "get_keys FAILED!"
             return
 
         print "Got OTA Keybag"
@@ -331,11 +332,11 @@ class MobileBackupClient(object):
         print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
         for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
             print "Listing snapshot..."
-            files = self.listFiles(backupUDID, snapshot)
+            files = self.list_files(backupUDID, snapshot)
             print "Files in snapshot %s : %s" % (snapshot,len(files))
             files2 = []
 
-            if fast == 'y':
+            if fast:
                 for f in files:
                     if 'AddressBook.sqlitedb' in f.RelativePath \
                             or 'Calendar.sqlitedb' in f.RelativePath \
@@ -349,16 +350,15 @@ class MobileBackupClient(object):
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
                     self.authorize_get(authTokens,snapshot)
-
-            if fast=='n':
+            else:
                 if len(files):
                     authTokens = self.get_files(backupUDID, snapshot, files)
                     self.authorize_get(authTokens,snapshot)
 
 
-def download_backup(login, password, outputFolder):
+def download_backup(login, password, output_folder):
     print 'Working with %s : %s' % (login,password)
-    print 'Output directory :', outputFolder
+    print 'Output directory :', output_folder
 
     auth = "Basic %s" % base64.b64encode("%s:%s" % (login,password))
     authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "", {"Authorization": auth})
@@ -370,9 +370,9 @@ def download_backup(login, password, outputFolder):
     auth = "Basic %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
     account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "",{"Authorization": auth, "X-MMe-Client-Info": Client_Info, "User-Agent": USER_AGENT_UBD})
     auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
-    client = MobileBackupClient(account_settings, dsPrsID, auth, outputFolder)
+    client = MobileBackupClient(account_settings, dsPrsID, auth, output_folder)
 
-    mbsacct = client.getAccount()
+    mbsacct = client.get_account()
 
     i = 0
     print "Available Devices: ",len(mbsacct.backupUDID)
@@ -384,11 +384,9 @@ def download_backup(login, password, outputFolder):
         print "\tLastUpdate: ",datetime.utcfromtimestamp(client.get_backup(device).Snapshot.LastModified)
         i = i+1
 
-
     id = raw_input("\nSelect backup to download: ")
-    #client.download(mbsacct.backupUDID[int(z)])
     fast = raw_input("\nDownload only AddressBook,SMS,Photos (y/n): ")
-    client.download(mbsacct.backupUDID[int(id)],fast)
+    client.download(mbsacct.backupUDID[int(id)], fast == "y")
 
 def backup_summary(mbsbackup):
     d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
