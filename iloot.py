@@ -33,7 +33,7 @@ USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
 
 ITEM_TYPES_TO_FILE_NAMES = {
-    'addresses': "AddressBook.sqlitedb",
+    'address_book': "AddressBook.sqlitedb",
     'calendar': "Calendar.sqlitedb",
     'call_history': "call_history.db",
     'photos': ".JPG",
@@ -438,8 +438,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", "-o", type=str, default="output", help="Output Directory")
     parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
             help="Only download the specified item types. Options include " \
-                    "addresses, calendar, sms, call_history, voicemails, and " \
-                    "photos. E.g., --types sms voicemail")
+                    "address_book, calendar, sms, call_history, voicemails, " \
+                    "and photos. E.g., --types sms voicemail")
 
     args = parser.parse_args()
     download_backup(args.apple_id, args.password, args.output, args.item_types)
