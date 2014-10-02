@@ -2,6 +2,7 @@
 
 # from __future__ import print_function
 
+import argparse
 from datetime import datetime
 from httplib import HTTPSConnection
 from pprint import pprint
@@ -76,6 +77,33 @@ def probobuf_request(host, method, url, body, headers, msg=None):
     return res
 
 
+class URLFactory(object):
+    def __init__(self, base=None):
+        self.components = []
+
+        if base is not None:
+            self.components.append(base)
+
+    def __getattr__(self, k):
+        self.components.append(k)
+        return self
+
+    def __getitem__(self, k):
+        self.components.append(str(k))
+        return self
+
+    def __call__(self, *args, **kwargs):
+        url = "/".join(self.components)
+        if len(kwargs) > 0:
+            params = urllib.urlencode(kwargs)
+            return "{}?{}".format(url, params)
+        else:
+            return url
+
+
+MBS = URLFactory("mbs")
+URL = URLFactory()
+
 class MobileBackupClient(object):
     def __init__(self, account_settings, dsPrsID, auth, outputFolder):
         mobilebackup_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Backup"]["url"]
@@ -106,20 +134,20 @@ class MobileBackupClient(object):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
 
     def getAccount(self):
-        return self.mobileBackupRequest("GET", "/mbs/%d" % self.dsPrsID, MBSAccount)
+        return self.mobileBackupRequest("GET", MBS[self.dsPrsID](), MBSAccount)
 
     def get_backup(self, backupUDID):
-        return self.mobileBackupRequest("GET", "/mbs/%d/%s" % (self.dsPrsID, backupUDID.encode("hex")), MBSBackup)
+        return self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")](), MBSBackup)
 
     def getKeys(self, backupUDID):
-        return self.mobileBackupRequest("GET", "/mbs/%d/%s/getKeys" % (self.dsPrsID, backupUDID.encode("hex")), MBSKeySet)
+        return self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")].getKeys(), MBSKeySet)
 
     def listFiles(self, backupUDID, snapshotId):
-        files = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=0&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId))
+        files = self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=0, limit=100))
         offset = 100
         files2 = 1
         while files2:
-            files2 = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId, str(offset)))
+            files2 = self.mobileBackupRequest("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=100))
             if files2:
                 offset += 100
                 files = files + files2
@@ -143,7 +171,7 @@ class MobileBackupClient(object):
             self.files[file.Signature] = f
 
         body = encode_protobuf_array(r)
-        z = self.mobileBackupRequest("POST", "/mbs/%d/%s/%d/getFiles" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId), None, body)
+        z = self.mobileBackupRequest("POST", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].getFiles(), None, body)
         tokens = decode_protobuf_array(z, MBSFileAuthToken)
         z = MBSFileAuthTokens()
 
@@ -158,7 +186,7 @@ class MobileBackupClient(object):
         self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
         body = tokens.SerializeToString()
 
-        filegroups = probobuf_request(self.content_host, "POST", "/%d/authorizeGet" % self.dsPrsID, body, self.headers2, FileGroups)
+        filegroups = probobuf_request(self.content_host, "POST", URL[self.dsPrsID].authorizeGet(), body, self.headers2, FileGroups)
         filechunks = {}
         for group in filegroups.file_groups:
             for container_index, chunk in enumerate(group.storage_host_chunk_list):
@@ -183,7 +211,7 @@ class MobileBackupClient(object):
     def get_complete(self, mmcs_auth):
         self.headers2["x-apple-mmcs-auth"] = mmcs_auth
         body = ""
-        probobuf_request(self.content_host, "POST", "/%d/getComplete" % self.dsPrsID, body, self.headers2)
+        probobuf_request(self.content_host, "POST", URL[self.dsPrsID].getComplete(), body, self.headers2)
 
     def download_chunks(self, storage_host):
         headers = {}
@@ -333,7 +361,7 @@ def download_backup(login, password, outputFolder):
     print 'Output directory :', outputFolder
 
     auth = "Basic %s" % base64.b64encode("%s:%s" % (login,password))
-    authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "",{"Authorization": auth})
+    authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "", {"Authorization": auth})
     if not authenticateResponse:
         print "Invalid Apple ID/password ?"
         return
@@ -366,8 +394,12 @@ def backup_summary(mbsbackup):
     d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
     return "%s %s %s %s" % (str(d), mbsbackup.Attributes.MarketingName, mbsbackup.Snapshot.Attributes.DeviceName, mbsbackup.Snapshot.Attributes.ProductVersion)
 
-appleid = sys.argv[1]
-password = sys.argv[2]
-outputdir = 'output'
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog='iloot')
+    parser.add_argument("--apple_id", type=str, default=None, help="Apple ID")
+    parser.add_argument("--password", type=str, default=None, help="Password")
+    parser.add_argument("--output", "-o", type=str, default="output", help="Output Directory")
 
-download_backup(appleid,password,outputdir)
+    args = parser.parse_args()
+    download_backup(args.apple_id, args.password, args.output)
+
