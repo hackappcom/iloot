@@ -472,7 +472,7 @@ def download_backup(login, password, output_folder, types, combined, itunes_styl
     auth = "Basic %s" % base64.b64encode("%s:%s" % (login, password))
     authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "", {"Authorization": auth})
     if not authenticateResponse:
-        print "Invalid Apple ID/password ?"
+        # There was an error authenticating the user.
         return
 
     dsPrsID = authenticateResponse["appleAccountInfo"]["dsPrsID"]
