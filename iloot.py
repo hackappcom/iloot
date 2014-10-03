@@ -180,14 +180,14 @@ class MobileBackupClient(object):
         limit = 5000
         files = ""
 
-        i = 0
-        new_files = self.mobile_backup_request("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=%s" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId, str(i), str(limit) ))
+        offset = 0
+        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
         while new_files:
             files = files + new_files
+            offset += limit;
 
-            i = i + limit;
-            new_files = self.mobile_backup_request("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=%s" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId, str(i), str(limit) ))
-            print "\tShifting offset: ", i
+            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+            print "\tShifting offset: ", offset
 
         return decode_protobuf_array(files, MBSFile)
 
