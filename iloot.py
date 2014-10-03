@@ -517,9 +517,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='iloot')
     parser.add_argument("apple_id", type=str, default=None, help="Apple ID")
     parser.add_argument("password", type=str, default=None, help="Password")
-    parser.add_argument("--output", "-o", type=str, default="output", help="Output Directory")
-    parser.add_argument("--combined", action="store_true", help="Do not separate each snapshot into its own folder")
-    parser.add_argument("--itunes_style", action="store_true", help="Save the files in a flat iTunes-style backup, with mangeled names")
+
+    parser.add_argument("--output", "-o", type=str, default="output",
+            help="Output Directory")
+
+    parser.add_argument("--combined", action="store_true",
+            help="Do not separate each snapshot into its own folder")
+
+    parser.add_argument("--itunes_style", action="store_true",
+            help="Save the files in a flat iTunes-style backup, with " \
+                    "mangled names")
+
     parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
             help="Only download the specified item types. Options include " \
                     "address_book, calendar, sms, call_history, voicemails, " \
