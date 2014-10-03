@@ -67,11 +67,22 @@ def plist_request(host, method, url, body, headers):
     conn = HTTPSConnection(host)
     request = conn.request(method, url, body, headers)
     response = conn.getresponse()
+
+    data = response.read()
+    try:
+        plist_data = plistlib.readPlistFromString(data)
+    except:
+        plist_data = None
+
     if response.status != 200:
-        print "Request %s returned code %d" % (url, response.status)
+        if plist_data is None:
+            print "Request %s returned code %d" % (url, response.status)
+        else:
+            print "{}: {}".format(plist_data.title, plist_data.message)
+
         return
 
-    return plistlib.readPlistFromString(response.read())
+    return plist_data
 
 def probobuf_request(host, method, url, body, headers, msg=None):
     conn = HTTPSConnection(host)
