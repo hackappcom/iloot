@@ -283,23 +283,23 @@ class MobileBackupClient(object):
 
     def write_file(self, file, decrypted_chunks, snapshot):
         # If the filename should be left in the iTunes backup style
-        if ( self.itunes_style ) :
-            if ( self.combined ) :
+        if self.itunes_style:
+            if self.combined:
                 directory = self.output_folder
-            else :
+            else:
                 directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
             path_hash = hashlib.sha1(file.Domain+"-"+file.RelativePath).hexdigest()
-            path = os.path.join( directory, path_hash )
-        else :
-            if ( self.combined ) :
+            path = os.path.join(directory, path_hash)
+        else:
+            if self.combined:
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
                 path = os.path.join(directory, file.RelativePath)
-            else :
+            else:
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
                 path = os.path.join(directory, file.RelativePath)
-            
-        mkdir_p( os.path.dirname(path) )
+
+        mkdir_p(os.path.dirname(path))
 
         print '\t', file.Domain, '\t', path
         with open(path, "wb") as ff:
@@ -341,7 +341,7 @@ class MobileBackupClient(object):
             os.rename(path, oldpath)
         except:
             pass
-            
+
         with open(oldpath, "rb") as old_file:
             with open(path, "wb") as new_file:
                 n = sz / 0x1000
@@ -400,7 +400,7 @@ class MobileBackupClient(object):
 
         print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
         #for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
-        for snapshot in [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID] :
+        for snapshot in [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]:
             print "Listing snapshot..."
             files = self.list_files(backupUDID, snapshot)
             print "Files in snapshot %s : %s" % (snapshot, len(files))
@@ -416,18 +416,19 @@ class MobileBackupClient(object):
                 authTokens = self.get_files(backupUDID, snapshot, files)
                 self.authorize_get(authTokens, snapshot)
 
-            if ( self.itunes_style ) :
+            if self.itunes_style:
                 self.write_info_plist(mbsbackup, snapshot)
 
-    # Writes a plist file in the output_directory simular to that created by iTunes during backup            
-    def write_info_plist(self, mbsbackup, snapshot) :
-        if ( self.combined ) :
+    # Writes a plist file in the output_directory simular to that created by iTunes during backup
+    def write_info_plist(self, mbsbackup, snapshot):
+        if self.combined:
             directory = self.output_folder
-        else :
+        else:
             directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
         plist_file = open(directory+"/Info.plist", "w")
 
+        # TODO: Use plistlib to generate the XML
         plist_file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         plist_file.write("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
         plist_file.write("<plist version=\"1.0\">\n")
@@ -463,7 +464,7 @@ class MobileBackupClient(object):
 
         plist_file.close()
 
-        
+
 
 def download_backup(login, password, output_folder, types, combined, itunes_style):
     print 'Working with %s : %s' % (login, password)
