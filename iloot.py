@@ -192,12 +192,12 @@ class MobileBackupClient(object):
         files = ""
 
         offset = 0
-        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=limit))
         while new_files:
             files = files + new_files
             offset += limit;
 
-            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=limit))
             print "\tShifting offset: ", offset
 
         return decode_protobuf_array(files, MBSFile)
@@ -287,16 +287,16 @@ class MobileBackupClient(object):
             if self.combined:
                 directory = self.output_folder
             else:
-                directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+                directory = os.path.join(self.output_folder, "snapshot_"+snapshot.encode('utf-8'))
 
-            path_hash = hashlib.sha1(file.Domain+"-"+file.RelativePath).hexdigest()
+            path_hash = hashlib.sha1(file.Domain.encode('utf-8')+"-"+file.RelativePath.encode('utf-8')).hexdigest()
             path = os.path.join(directory, path_hash)
         else:
             if self.combined:
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
                 path = os.path.join(directory, file.RelativePath)
             else:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+snapshot.encode('utf-8')+"/"+file.Domain))
                 path = os.path.join(directory, file.RelativePath)
 
         mkdir_p(os.path.dirname(path))
