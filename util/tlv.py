@@ -8,7 +8,7 @@ def tlvToDict(blob):
 
 def tlvToList(blob):
     return list(loopTLVBlocks(blob))
-    
+
 def loopTLVBlocks(blob):
     i = 0
     while i + 8 <= len(blob):

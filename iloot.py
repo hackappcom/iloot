@@ -1,362 +1,539 @@
-import base64
+#!/usr/bin/env python
+
+# from __future__ import print_function
+
 from datetime import datetime
+from httplib import HTTPSConnection
+from pprint import pprint
+import argparse
+import base64
+import errno
 import getpass
 import hashlib
-from httplib import HTTPSConnection
 import os
 import plistlib
-from pprint import pprint
 import re
 import struct
 import sys
+import urllib
+import urlparse
 
-
+import hurry.filesize
 from chunkserver_pb2 import FileGroups
 from crypto.aes import AESencryptCBC, AESdecryptCBC, AESdecryptCFB
 from icloud_pb2 import MBSAccount, MBSBackup, MBSKeySet, MBSFile, MBSFileAuthToken, MBSFileAuthTokens
 from keystore.keybag import Keybag
 from pbuf import decode_protobuf_array, encode_protobuf_array
-from util import hexdump, makedirs
+from util import hexdump
 
-Client_Info = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
+CLIENT_INFO = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
 USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
-Client_Info_backup = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
+CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
+
+ITEM_TYPES_TO_FILE_NAMES = {
+    'address_book': "AddressBook.sqlitedb",
+    'calendar': "Calendar.sqlitedb",
+    'call_history': "call_history.db",
+    'photos': ".JPG",
+    'sms': "sms.db",
+    'voicemails': "Voicemail",
+}
+
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 #XXX handle all signature types
 def chunk_signature(data):
-	h = hashlib.sha256(data).digest()
-	return hashlib.sha256(h).digest()[:20]
+    h = hashlib.sha256(data).digest()
+    return hashlib.sha256(h).digest()[:20]
 
 def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
-	clear = AESdecryptCFB(data, chunk_encryption_key[1:])
-	if chunk_checksum[1:] == chunk_signature(clear):
-		return clear
-	print "chunk decryption Failed"
-	return None
+    clear = AESdecryptCFB(data, chunk_encryption_key[1:])
+    if chunk_checksum[1:] == chunk_signature(clear):
+        return clear
+
+    print "chunk decryption Failed"
+    return None
 
 def plist_request(host, method, url, body, headers):
-	h = HTTPSConnection(host)
-	r = h.request(method, url, body, headers)
-	res = h.getresponse()
-	if res.status != 200:
-		print "Request %s returned code %d" % (url, res.status)
-		return
-	return plistlib.readPlistFromString(res.read())
+    conn = HTTPSConnection(host)
+    request = conn.request(method, url, body, headers)
+    response = conn.getresponse()
+
+    data = response.read()
+    try:
+        plist_data = plistlib.readPlistFromString(data)
+    except:
+        plist_data = None
+
+    if response.status != 200:
+        if plist_data is None:
+            print "Request %s returned code %d" % (url, response.status)
+        else:
+            print "{}: {}".format(plist_data.title, plist_data.message)
+
+        return
+
+    return plist_data
 
 def probobuf_request(host, method, url, body, headers, msg=None):
-	h = HTTPSConnection(host)
-	r = h.request(method, url, body, headers)
-	res = h.getresponse()
-	length = res.getheader("content-length")
-	if length == None: length = 0
-	else: length = int(length)
-	data = res.read()
-	while len(data) < length:
-		d = res.read()
-		data += d
-	h.close()
-	if msg == None:
-		return data
-	res = msg()
-	res.ParseFromString(data)
-	return res
+    conn = HTTPSConnection(host)
+    request = conn.request(method, url, body, headers)
+    response = conn.getresponse()
+    length = response.getheader("content-length")
+
+    if length is None:
+        length = 0
+    else:
+        length = int(length)
+
+    data = response.read()
+
+    while len(data) < length:
+        d = response.read()
+        data += d
+
+    conn.close()
+    if msg == None:
+        return data
+
+    res = msg()
+    res.ParseFromString(data)
+    return res
 
 
-def sizeof_fmt(num):
-	for x in ['bytes','KB','MB','GB','TB']:
-		if num < 1024.0:
-			return "%3.1f %s" % (num, x)
-		num /= 1024.0
+class URLFactory(object):
+    def __init__(self, base=None):
+        self.components = []
+        self.base = base
+        self.combined = False;
+        self.itunes_style = False;
+
+        if self.base is not None:
+            self.components.append(self.base)
+
+    def __getattr__(self, k):
+        self.components.append(k)
+        return self
+
+    def __getitem__(self, k):
+        self.components.append(str(k))
+        return self
+
+    def __call__(self, *args, **kwargs):
+        url = "/{}".format("/".join(self.components))
+
+        self.components = []
+        if self.base is not None:
+            self.components.append(self.base)
+
+        if len(kwargs) > 0:
+            params = urllib.urlencode(kwargs)
+            return "{}?{}".format(url, params)
+        else:
+            return url
+
+
+MBS = URLFactory("mbs")
+URL = URLFactory()
+
+def host_from_url(url):
+    return urlparse.urlparse(url).hostname
 
 class MobileBackupClient(object):
-	def __init__(self, account_settings, dsPrsID, auth, outputFolder):
-		mobilebackup_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Backup"]["url"]
-		content_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Content"]["url"]
+    def __init__(self, account_settings, dsPrsID, auth, output_folder):
+        mobilebackup_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Backup"]["url"]
+        content_url = account_settings["com.apple.mobileme"]["com.apple.Dataclass.Content"]["url"]
 
-		self.mobilebackup_host = re.match("https://(.*):443", mobilebackup_url).group(1)
-		self.content_host = re.match("https://(.*):443", content_url).group(1)
-		self.dsPrsID = dsPrsID
-		self.headers = {"Authorization": auth,
-						"X-MMe-Client-Info": Client_Info,
-						"User-Agent": USER_AGENT_MOBILE_BACKUP,
-						"X-Apple-MBS-Protocol-Version": "1.7"
-		}
-		self.headers2 = {"x-apple-mmcs-proto-version": "3.3",
-			"x-apple-mmcs-dataclass": "com.apple.Dataclass.Backup",
-			"x-apple-mme-dsid": str(self.dsPrsID),
-			"User-Agent":USER_AGENT_BACKUPD,
-			"Accept": "application/vnd.com.apple.me.ubchunk+protobuf",
-			"Content-Type": "application/vnd.com.apple.me.ubchunk+protobuf",
-			"x-mme-client-info": Client_Info_backup
-		}
-		self.files = {}
-		self.outputFolder = outputFolder
+        self.mobilebackup_host = host_from_url(mobilebackup_url)
+        self.content_host = host_from_url(content_url)
+        self.dsPrsID = dsPrsID
+        self.headers = {
+            'Authorization': auth,
+            'X-MMe-Client-Info': CLIENT_INFO,
+            'User-Agent': USER_AGENT_MOBILE_BACKUP,
+            'X-Apple-MBS-Protocol-Version': "1.7"
+        }
+        self.headers2 = {
+            'x-apple-mmcs-proto-version': "3.3",
+            'x-apple-mmcs-dataclass': "com.apple.Dataclass.Backup",
+            'x-apple-mme-dsid': str(self.dsPrsID),
+            'User-Agent': USER_AGENT_BACKUPD,
+            'Accept': "application/vnd.com.apple.me.ubchunk+protobuf",
+            'Content-Type': "application/vnd.com.apple.me.ubchunk+protobuf",
+            'x-mme-client-info': CLIENT_INFO_BACKUP
+        }
 
-	def mobileBackupRequest(self, method, url, msg=None, body=""):
-		return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
+        self.files = {}
+        self.output_folder = output_folder
 
-	def getAccount(self):
-		return self.mobileBackupRequest("GET", "/mbs/%d" % self.dsPrsID, MBSAccount)
+    def mobile_backup_request(self, method, url, msg=None, body=""):
+        return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
 
-	def getBackup(self, backupUDID):
-		return self.mobileBackupRequest("GET", "/mbs/%d/%s" % (self.dsPrsID, backupUDID.encode("hex")), MBSBackup)
+    def get_account(self):
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID](), MBSAccount)
 
-	def getKeys(self, backupUDID):
-		return self.mobileBackupRequest("GET", "/mbs/%d/%s/getKeys" % (self.dsPrsID, backupUDID.encode("hex")), MBSKeySet)
+    def get_backup(self, backupUDID):
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")](), MBSBackup)
 
-	def listFiles(self, backupUDID, snapshotId):
-		files = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=0&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId))
-		i = 100
-		files2 = 1
-		while files2:
+    def get_keys(self, backupUDID):
+        return self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")].getKeys(), MBSKeySet)
+
+    def list_files(self, backupUDID, snapshotId):
+        limit = 5000
+        files = ""
+
+        offset = 0
+        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+        while new_files:
+            files = files + new_files
+            offset += limit;
+
+            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+            print "\tShifting offset: ", offset
+
+        return decode_protobuf_array(files, MBSFile)
+
+    def get_files(self, backupUDID, snapshotId, files):
+        r = []
+        h = {}
+        for file in files:
+            if file.Size == 0:
+                continue
+
+            ff = MBSFile()
+            ff.FileID = file.FileID
+            h[file.FileID] = file.Signature
+            r.append(ff)
+            self.files[file.Signature] = file
+
+        body = encode_protobuf_array(r)
+        z = self.mobile_backup_request("POST", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].getFiles(), None, body)
+        tokens = decode_protobuf_array(z, MBSFileAuthToken)
+        z = MBSFileAuthTokens()
+
+        for token in tokens:
+            toto = z.tokens.add()
+            toto.FileID = h[token.FileID]
+            toto.AuthToken = token.AuthToken
+
+        return z
+
+    def authorize_get(self, tokens, snapshot):
+        self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
+        body = tokens.SerializeToString()
+
+        file_groups = probobuf_request(self.content_host, "POST", URL[self.dsPrsID].authorizeGet(), body, self.headers2, FileGroups)
+        file_chunks = {}
+        for group in file_groups.file_groups:
+            for container_index, container in enumerate(group.storage_host_chunk_list):
+                data = self.download_chunks(container)
+                for file_ref in group.file_checksum_chunk_references:
+                    if file_ref.file_checksum not in self.files:
+                        continue
+
+                    decrypted_chunks = file_chunks.setdefault(file_ref.file_checksum, {})
+
+                    for i, reference in enumerate(file_ref.chunk_references):
+                        if reference.container_index == container_index:
+                            decrypted_chunks[i] = data[reference.chunk_index]
+
+                    if len(decrypted_chunks) == len(file_ref.chunk_references):
+                        file = self.files[file_ref.file_checksum]
+                        try:
+                            self.write_file(file, decrypted_chunks, snapshot)
+                        except:
+                            raise
+                        else:
+                            del self.files[file_ref.file_checksum]
+
+        return file_groups
+
+    def get_complete(self, mmcs_auth):
+        self.headers2["x-apple-mmcs-auth"] = mmcs_auth
+        body = ""
+        probobuf_request(self.content_host, "POST", URL[self.dsPrsID].getComplete(), body, self.headers2)
+
+    def download_chunks(self, container):
+        headers = {}
+        # XXX
+        for header in container.host_info.headers:
+            headers[header.name] = header.value
+
+        d = probobuf_request(container.host_info.hostname,
+                         container.host_info.method,
+                         container.host_info.uri, "", headers)
+        decrypted = []
+        i = 0
+        for chunk in container.chunk_info:
+            dchunk = decrypt_chunk(d[i:i+chunk.chunk_length], chunk.chunk_encryption_key, chunk.chunk_checksum)
+            if dchunk:
+                decrypted.append(dchunk)
+                i += chunk.chunk_length
+
+        return decrypted
+
+    def write_file(self, file, decrypted_chunks, snapshot):
+        # If the filename should be left in the iTunes backup style
+        if self.itunes_style:
+            if self.combined:
+                directory = self.output_folder
+            else:
+                directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+
+            path_hash = hashlib.sha1(file.Domain+"-"+file.RelativePath).hexdigest()
+            path = os.path.join(directory, path_hash)
+        else:
+            if self.combined:
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
+                path = os.path.join(directory, file.RelativePath)
+            else:
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
+                path = os.path.join(directory, file.RelativePath)
+
+        mkdir_p(os.path.dirname(path))
+
+        print '\t', file.Domain, '\t', path
+        with open(path, "wb") as ff:
+            hash = hashlib.sha1()
+            for key, chunk in decrypted_chunks.iteritems():
+                hash.update(chunk)
+                ff.write(chunk)
+
+        # If file is encrypted
+        if file.Attributes.EncryptionKey:
+            key = file.Attributes.EncryptionKey
+            ProtectionClass = struct.unpack(">L", key[0x18:0x1C])[0]
+            if ProtectionClass == file.Attributes.ProtectionClass:
+                if file.Attributes.EncryptionKeyVersion and file.Attributes.EncryptionKeyVersion == 2:
+                    assert self.kb.uuid == key[:0x10]
+                    keyLength = struct.unpack(">L", key[0x20:0x24])[0]
+                    assert keyLength == 0x48
+                    wrapped_key = key[0x24:]
+                else:
+                    wrapped_key = key[0x1C:]
+
+                filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
+
+                if not filekey:
+                    print "Failed to unwrap file key for file %s !!!" % file.RelativePath
+                else:
+                    print "\tfilekey", filekey.encode("hex")
+                    self.decrypt_protected_file(path, filekey, file.Attributes.DecryptedSize)
+            else:
+                print "\tUnable to decrypt file, possible old backup format", file.RelativePath
+
+    def decrypt_protected_file(self, path, filekey, decrypted_size=0):
+        ivkey = hashlib.sha1(filekey).digest()[:16]
+        hash = hashlib.sha1()
+        sz = os.path.getsize(path)
+
+        oldpath = path + ".encrypted"
+        try:
+            os.rename(path, oldpath)
+        except:
+            pass
+
+        with open(oldpath, "rb") as old_file:
+            with open(path, "wb") as new_file:
+                n = sz / 0x1000
+                if decrypted_size:
+                    n += 1
+
+                for block in xrange(n):
+                    iv = AESencryptCBC(self.computeIV(block * 0x1000), ivkey)
+                    old_data = old_file.read(0x1000)
+                    hash.update(old_data)
+                    new_file.write(AESdecryptCBC(old_data, filekey, iv))
+
+                if decrypted_size == 0: #old iOS 5 format
+                    trailer = old_file.read(0x1C)
+                    decrypted_size = struct.unpack(">Q", trailer[:8])[0]
+                    assert hash.digest() == trailer[8:]
+
+                new_file.truncate(decrypted_size)
+
+    def computeIV(self, lba):
+        iv = ""
+        lba &= 0xffffffff
+        for _ in xrange(4):
+            if (lba & 1):
+                lba = 0x80000061 ^ (lba >> 1);
+            else:
+                lba = lba >> 1;
+
+            iv += struct.pack("<L", lba)
+
+        return iv
+
+    def download(self, backupUDID, item_types):
+        mbsbackup = self.get_backup(backupUDID)
+        self.output_folder = os.path.join(self.output_folder, backupUDID.encode("hex"))
+
+        print "Downloading backup {} to {}".format(backupUDID.encode("hex"), self.output_folder)
+
+        try:
+            mkdir_p(self.output_folder)
+        except OSError:
+            print "Directory \"{}\" already exists.".format(self.output_folder)
+            return
+
+        keys = self.get_keys(backupUDID)
+        if not keys or not len(keys.Key):
+            print "get_keys FAILED!"
+            return
+
+        print "Got OTA Keybag"
+
+        self.kb = Keybag(keys.Key[1].KeyData)
+        if not self.kb.unlockBackupKeybagWithPasscode(keys.Key[0].KeyData):
+            print "Unable to unlock OTA keybag !"
+            return
+
+        print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
+        #for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
+        for snapshot in [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]:
+            print "Listing snapshot..."
+            files = self.list_files(backupUDID, snapshot)
+            print "Files in snapshot %s : %s" % (snapshot, len(files))
+
+            def matches_allowed_item_types(file):
+                return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in file.RelativePath \
+                        for item_type in item_types)
+
+            if len(item_types) > 0:
+                files = filter(matches_allowed_item_types, files)
+
+            if len(files):
+                authTokens = self.get_files(backupUDID, snapshot, files)
+                self.authorize_get(authTokens, snapshot)
+
+            if self.itunes_style:
+                self.write_info_plist(mbsbackup, snapshot)
+
+    # Writes a plist file in the output_directory simular to that created by iTunes during backup
+    def write_info_plist(self, mbsbackup, snapshot):
+        if self.combined:
+            directory = self.output_folder
+        else:
+            directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+
+        plist_file = open(directory+"/Info.plist", "w")
+
+        # TODO: Use plistlib to generate the XML
+        plist_file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        plist_file.write("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
+        plist_file.write("<plist version=\"1.0\">\n")
+        plist_file.write("<dict>\n")
+        plist_file.write("    <key>Build Version</key>\n")
+        plist_file.write("    <string>10B329</string>\n")
+        plist_file.write("    <key>Device Name</key>\n")
+        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
+        plist_file.write("    <key>Display Name</key>\n")
+        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
+        plist_file.write("    <key>GUID</key>\n")
+        plist_file.write("    <string></string>\n")
+        plist_file.write("    <key>IMEI</key>\n")
+        plist_file.write("    <string></string>\n")
+        plist_file.write("    <key>Product Type</key>\n")
+        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.HardwareModel))
+        plist_file.write("    <key>Product Version</key>\n")
+        plist_file.write("    <string>6.1.3</string>\n")
+        plist_file.write("    <key>Serial Number</key>\n")
+        plist_file.write("    <string></string>\n")
+        plist_file.write("    <key>Target Identifier</key>\n")
+        plist_file.write("    <string></string>\n")
+        plist_file.write("    <key>Target Type</key>\n")
+        plist_file.write("    <string>Device</string>\n")
+        plist_file.write("    <key>Unique Identifier</key>\n")
+        plist_file.write("    <string></string>\n")
+        plist_file.write("    <key>iTunes Settings</key>\n")
+        plist_file.write("    <dict/>\n")
+        plist_file.write("    <key>iTunes Version</key>\n")
+        plist_file.write("    <string>11.1</string>\n")
+        plist_file.write("</dict>\n")
+        plist_file.write("</plist>\n")
+
+        plist_file.close()
 
 
-			files2 = self.mobileBackupRequest("GET", "/mbs/%d/%s/%d/listFiles?offset=%s&limit=100" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId,str(i)))
-			if files2:
-				i = i + 100
-				files = files + files2
-				print "\tShifting offset: ", i
 
-		#print files
+def download_backup(login, password, output_folder, types, combined, itunes_style):
+    print 'Working with %s : %s' % (login, password)
+    print 'Output directory :', output_folder
 
-		return decode_protobuf_array(files, MBSFile)
+    auth = "Basic %s" % base64.b64encode("%s:%s" % (login, password))
+    authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "", {"Authorization": auth})
+    if not authenticateResponse:
+        # There was an error authenticating the user.
+        return
 
-	def getFiles(self, backupUDID, snapshotId, files):
-		r = []
-		h = {}
-		for f in files:
-			if f.Size == 0:
-				continue
-			ff = MBSFile()
-			ff.FileID = f.FileID
-			h[f.FileID] = f.Signature
-			r.append(ff)
-			self.files[f.Signature] = f
-		body = encode_protobuf_array(r)
-		z = self.mobileBackupRequest("POST", "/mbs/%d/%s/%d/getFiles" % (self.dsPrsID, backupUDID.encode("hex"), snapshotId), None, body)
-		tokens = decode_protobuf_array(z, MBSFileAuthToken)
-		z = MBSFileAuthTokens()
-		for t in tokens:
-			toto = z.tokens.add()
-			toto.FileID = h[t.FileID]
-			toto.AuthToken = t.AuthToken
-		return z
+    dsPrsID = authenticateResponse["appleAccountInfo"]["dsPrsID"]
+    auth = "Basic %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
 
-	def authorizeGet(self, tokens,snapshot):
-		self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
-		body = tokens.SerializeToString()
+    headers = {
+        'Authorization': auth,
+        'X-MMe-Client-Info': CLIENT_INFO,
+        'User-Agent': USER_AGENT_UBD
+    }
+    account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "", headers)
+    auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
+    client = MobileBackupClient(account_settings, dsPrsID, auth, output_folder)
 
-		filegroups = probobuf_request(self.content_host, "POST", "/%d/authorizeGet" % self.dsPrsID, body, self.headers2, FileGroups)
-		#print filegroups
-		filechunks = {}
-		for group in filegroups.file_groups:
-			for container_index in xrange(len(group.storage_host_chunk_list)):
-				data = self.downloadChunks(group.storage_host_chunk_list[container_index])
-				for file_ref in group.file_checksum_chunk_references:
-					if not self.files.has_key(file_ref.file_checksum):
-						continue
-					decrypted_chunks = filechunks.setdefault(file_ref.file_checksum, {})
-					for i in xrange(len(file_ref.chunk_references)):
-						ref = file_ref.chunk_references[i]
-						if ref.container_index == container_index:
-							decrypted_chunks[i] = data[ref.chunk_index]
-					if len(decrypted_chunks) == len(file_ref.chunk_references):
-						f = self.files[file_ref.file_checksum]
-						self.writeFile(f, decrypted_chunks,snapshot)
-						del self.files[file_ref.file_checksum]
+    client.combined = combined
+    client.itunes_style = itunes_style
 
-		return filegroups
+    mbsacct = client.get_account()
 
-	def getComplete(self, mmcs_auth):
-		self.headers2["x-apple-mmcs-auth"] = mmcs_auth
-		body = ""
-		probobuf_request(self.content_host, "POST", "/%d/getComplete" % self.dsPrsID, body, self.headers2)
+    print "Available Devices: ", len(mbsacct.backupUDID)
+    for i, device in enumerate(mbsacct.backupUDID):
+        backup = client.get_backup(device)
+        print "===[", i, "]==="
+        print "\tUDID: ", backup.backupUDID.encode("hex")
+        print "\tDevice: ", backup.Attributes.MarketingName
+        print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
+        print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
 
-	def downloadChunks(self, storage_host):
-		headers = {}
-		for h in storage_host.host_info.headers:
-			headers[h.name] = h.value
-		d = probobuf_request(storage_host.host_info.hostname,
-						 storage_host.host_info.method,
-						 storage_host.host_info.uri, "", headers)
-		decrypted = []
-		i = 0
-		for chunk in storage_host.chunk_info:
-			dchunk = decrypt_chunk(d[i:i+chunk.chunk_length], chunk.chunk_encryption_key, chunk.chunk_checksum)
-			if dchunk:
-				decrypted.append(dchunk)
-				i += chunk.chunk_length
-		return decrypted
+    if i == 0:
+        UDID = mbsacct.backupUDID[0]
+    else:
+        id = raw_input("\nSelect backup to download (0-{}): ".format(i))
+        UDID = mbsacct.backupUDID[int(id)]
 
-	def writeFile(self, f, decrypted_chunks,snapshot):
-		if not os.path.exists(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain))):
-			os.makedirs(os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain)))
-
-		path = os.path.join(self.outputFolder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+f.Domain+"/"+f.RelativePath))
-		#print '\t',f
-		print '\t',f.Domain,'\t',path
-		makedirs(os.path.dirname(path))
-		ff = open(path, "wb")
-		h = hashlib.sha1()
-		for i in xrange(len(decrypted_chunks)):
-			d = decrypted_chunks[i]
-			h.update(d)
-			ff.write(d)
-		ff.close()
-
-		#If file is encrypted
-		if f.Attributes.EncryptionKey:
-			EncryptionKey = f.Attributes.EncryptionKey
-			ProtectionClass = struct.unpack(">L", EncryptionKey[0x18:0x1C])[0]
-			if ProtectionClass == f.Attributes.ProtectionClass:
-				if f.Attributes.EncryptionKeyVersion and f.Attributes.EncryptionKeyVersion == 2:
-					assert self.kb.uuid == EncryptionKey[:0x10]
-					keyLength = struct.unpack(">L", EncryptionKey[0x20:0x24])[0]
-					assert keyLength == 0x48
-					wrapped_key = EncryptionKey[0x24:]
-				else:
-					wrapped_key = EncryptionKey[0x1C:]
-				filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
-				if not filekey:
-					print "Failed to unwrap file key for file %s !!!" % f.RelativePath
-				else:
-					print "\tfilekey",filekey.encode("hex")
-					self.decryptProtectedFile(path, filekey, f.Attributes.DecryptedSize)
-			else:
-				print "\tUnable to decrypt file, possible old backup format", f.RelativePath
-				#hexdump(EncryptionKey)
-
-	def decryptProtectedFile(self, path, filekey, DecryptedSize=0):
-		ivkey = hashlib.sha1(filekey).digest()[:16]
-		h = hashlib.sha1()
-		sz = os.path.getsize(path)
-		#iOS 5 trailer = uint64 sz + sha1 of encrypted file
-		#assert (sz % 0x1000) == 0x1C
-		oldpath = path + ".encrypted"
-		try:
-			os.rename(path, oldpath)
-		except:
-			pass
-		f1 = open(oldpath, "rb")
-		f2 = open(path, "wb")
-		n = (sz / 0x1000)
-		if DecryptedSize:
-			n += 1
-		for block in xrange(n):
-			iv = AESencryptCBC(self.computeIV(block * 0x1000), ivkey)
-			data = f1.read(0x1000)
-			h.update(data)
-			f2.write(AESdecryptCBC(data, filekey, iv))
-		if DecryptedSize == 0: #old iOS 5 format
-			trailer = f1.read(0x1C)
-			DecryptedSize = struct.unpack(">Q", trailer[:8])[0]
-			assert h.digest() == trailer[8:]
-		f1.close()
-		f2.truncate(DecryptedSize)
-		f2.close()
-
-	def computeIV(self, lba):
-		iv = ""
-		lba &= 0xffffffff
-		for _ in xrange(4):
-			if (lba & 1):
-				lba = 0x80000061 ^ (lba >> 1);
-			else:
-				lba = lba >> 1;
-			iv += struct.pack("<L", lba)
-		return iv
-
-	def download(self,backupUDID,fast):
-		mbsbackup = self.getBackup(backupUDID)
-		print "Downloading backup %s" % backupUDID.encode("hex")
-		self.outputFolder = os.path.join(self.outputFolder, backupUDID.encode("hex"))
-		makedirs(self.outputFolder)
-		#print backup_summary(mbsbackup)
-		#print mbsbackup.Snapshot.Attributes.KeybagUUID.encode("hex")
-		keys = self.getKeys(backupUDID)
-		if not keys or not len(keys.Key):
-			print "getKeys FAILED!"
-			return
-		print "Got OTA Keybag"
-
-		self.kb = Keybag(keys.Key[1].KeyData)
-		if not self.kb.unlockBackupKeybagWithPasscode(keys.Key[0].KeyData):
-			print "Unable to unlock OTA keybag !"
-			return
-
-
-		print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
-		for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
-			print "Listing snapshot..."
-			files = self.listFiles(backupUDID, snapshot)
-			print "Files in snapshot %s : %s" % (snapshot,len(files))
-			files2 = []
-			if fast=='y':
-				for f in files:
-					if 'AddressBook.sqlitedb' in f.RelativePath or 'Calendar.sqlitedb' in f.RelativePath or 'sms.db' in f.RelativePath or 'call_history.db' in f.RelativePath or '.JPG'  in f.RelativePath :
-						files2.append(f)
-				files = files2
-				if len(files):
-					authTokens = self.getFiles(backupUDID, snapshot, files)
-					#print authTokens
-					self.authorizeGet(authTokens,snapshot)
-
-
-			if fast=='n':
-				if len(files):
-					authTokens = self.getFiles(backupUDID, snapshot, files)
-					#print authTokens
-					self.authorizeGet(authTokens,snapshot)
-
-
-
-
-def download_backup(login, password, outputFolder):
-	print 'Working with %s : %s' % (login,password)
-	print 'Output directory :', outputFolder
-
-	auth = "Basic %s" % base64.b64encode("%s:%s" % (login,password))
-	authenticateResponse = plist_request("setup.icloud.com", "POST", "/setup/authenticate/$APPLE_ID$", "",{"Authorization": auth})
-	if not authenticateResponse:
-		print "Invalid Apple ID/password ?"
-		return
-
-	dsPrsID = authenticateResponse["appleAccountInfo"]["dsPrsID"]
-	auth = "Basic %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
-	account_settings = plist_request("setup.icloud.com", "POST", "/setup/get_account_settings", "",{"Authorization": auth, "X-MMe-Client-Info": Client_Info, "User-Agent": USER_AGENT_UBD})
-	auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
-	client = MobileBackupClient(account_settings, dsPrsID, auth, outputFolder)
-
-	mbsacct = client.getAccount()
-
-
-	i = 0
-	print "Available Devices: ",len(mbsacct.backupUDID)
-	for device in mbsacct.backupUDID:
-		print "===[",i,"]==="
-		print "\tUDID: ",client.getBackup(device).backupUDID.encode("hex")
-		print "\tDevice: ",client.getBackup(device).Attributes.MarketingName
-		print "\tSize: ",sizeof_fmt(client.getBackup(device).QuotaUsed)
-		print "\tLastUpdate: ",datetime.utcfromtimestamp(client.getBackup(device).Snapshot.LastModified)
-		i = i+1
-
-
-	id = raw_input("\nSelect backup to download: ")
-	#client.download(mbsacct.backupUDID[int(z)])
-	fast = raw_input("\nDownload only AddressBook,SMS,Photos (y/n): ")
-	client.download(mbsacct.backupUDID[int(id)],fast)
-
+    client.download(UDID, types)
 
 def backup_summary(mbsbackup):
-	d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
-	return "%s %s %s %s" % (str(d), mbsbackup.Attributes.MarketingName, mbsbackup.Snapshot.Attributes.DeviceName, mbsbackup.Snapshot.Attributes.ProductVersion)
+    d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
+    return "%s %s %s %s" % (str(d), mbsbackup.Attributes.MarketingName, mbsbackup.Snapshot.Attributes.DeviceName, mbsbackup.Snapshot.Attributes.ProductVersion)
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog='iloot')
+    parser.add_argument("apple_id", type=str, default=None, help="Apple ID")
+    parser.add_argument("password", type=str, default=None, help="Password")
 
+    parser.add_argument("--output", "-o", type=str, default="output",
+            help="Output Directory")
 
-appleid = sys.argv[1]
-password = sys.argv[2]
-outputdir = 'output'
+    parser.add_argument("--combined", action="store_true",
+            help="Do not separate each snapshot into its own folder")
 
-download_backup(appleid,password,outputdir)
+    parser.add_argument("--itunes_style", action="store_true",
+            help="Save the files in a flat iTunes-style backup, with " \
+                    "mangled names")
+
+    parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
+            help="Only download the specified item types. Options include " \
+                    "address_book, calendar, sms, call_history, voicemails, " \
+                    "and photos. E.g., --types sms voicemail")
+
+    args = parser.parse_args()
+    download_backup(args.apple_id, args.password, args.output, args.item_types, args.combined, args.itunes_style)
+
