@@ -1,7 +1,7 @@
 iLoot
 =====
 
-Using this CLI tool you can download backups of devices assigned to your AppleID. Based on [iphone-dataprotection](https://code.google.com/p/iphone-dataprotection/) script, so copyrights belong to respective owners. Offset operations added and other minor bugs fixed.
+Using this CLI tool you can download backups of devices assigned to your AppleID. Based on [iphone-dataprotection](https://code.google.com/p/iphone-dataprotection/) script, so copyrights belong to respective owners. Offset operations added and other minor bugs fixed. Thanks [Dan Loewenherz](https://github.com/dlo) for his additions.
 
 **This tool is for educational purposes only. Before you start, make sure it's not illegal in your country.**
 
