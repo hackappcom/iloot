@@ -319,15 +319,18 @@ class MobileBackupClient(object):
             key = file.Attributes.EncryptionKey
             ProtectionClass = struct.unpack(">L", key[0x18:0x1C])[0]
             if ProtectionClass == file.Attributes.ProtectionClass:
+                wrapped_key = None
+                filekey = None
                 if file.Attributes.EncryptionKeyVersion and file.Attributes.EncryptionKeyVersion == 2:
-                    assert self.kb.uuid == key[:0x10]
-                    keyLength = struct.unpack(">L", key[0x20:0x24])[0]
-                    assert keyLength == 0x48
-                    wrapped_key = key[0x24:]
+                    if self.kb.uuid == key[:0x10]:
+                      keyLength = struct.unpack(">L", key[0x20:0x24])[0]
+                      if keyLength == 0x48:
+                        wrapped_key = key[0x24:]
                 else:
                     wrapped_key = key[0x1C:]
 
-                filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
+                if wrapped_key:
+                  filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
 
                 if not filekey:
                     print "Failed to unwrap file key for file %s !!!" % file.RelativePath
@@ -404,7 +407,7 @@ class MobileBackupClient(object):
             print "Unable to unlock OTA keybag !"
             return
 
-        print "Available Snapshots: %d %d" % (mbsbackup.Snapshot.SnapshotID, self.chosen_snapshot_id)
+        print "Available Snapshots: %d" % (mbsbackup.Snapshot.SnapshotID)
         if ( self.chosen_snapshot_id == None ):
           snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
         elif ( self.chosen_snapshot_id < 0):
@@ -520,7 +523,9 @@ def download_backup(login, password, output_folder, types, chosen_snapshot_id, c
         print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
         print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
 
-    if i == 0:
+    if len(mbsacct.backupUDID) == 0:
+        return
+    elif len(mbsacct.backupUDID) == 1:
         UDID = mbsacct.backupUDID[0]
     else:
         id = raw_input("\nSelect backup to download (0-{}): ".format(i))
