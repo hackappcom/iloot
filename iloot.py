@@ -302,7 +302,7 @@ class MobileBackupClient(object):
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
                 path = os.path.join(directory, file.RelativePath)
             else:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+snapshot.encode('utf-8')+"/"+file.Domain))
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
                 path = os.path.join(directory, file.RelativePath)
 
         mkdir_p(os.path.dirname(path))
