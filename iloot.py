@@ -231,8 +231,8 @@ class MobileBackupClient(object):
         return z
 
     def authorize_get(self, tokens, snapshot):
-        if ( len(tokens.tokens) == 0 ):
-          return
+        if len(tokens.tokens) == 0:
+            return
 
         self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
         body = tokens.SerializeToString()
@@ -299,7 +299,7 @@ class MobileBackupClient(object):
             path = os.path.join(directory, path_hash)
         else:
             if self.combined:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", file.Domain))
                 path = os.path.join(directory, file.RelativePath)
             else:
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
@@ -323,14 +323,14 @@ class MobileBackupClient(object):
                 filekey = None
                 if file.Attributes.EncryptionKeyVersion and file.Attributes.EncryptionKeyVersion == 2:
                     if self.kb.uuid == key[:0x10]:
-                      keyLength = struct.unpack(">L", key[0x20:0x24])[0]
-                      if keyLength == 0x48:
-                        wrapped_key = key[0x24:]
+                        keyLength = struct.unpack(">L", key[0x20:0x24])[0]
+                        if keyLength == 0x48:
+                            wrapped_key = key[0x24:]
                 else:
                     wrapped_key = key[0x1C:]
 
                 if wrapped_key:
-                  filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
+                    filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
 
                 if not filekey:
                     print "Failed to unwrap file key for file %s !!!" % file.RelativePath
@@ -408,20 +408,20 @@ class MobileBackupClient(object):
             return
 
         print "Available Snapshots: %d" % (mbsbackup.Snapshot.SnapshotID)
-        if ( self.chosen_snapshot_id == None ):
-          snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
-        elif ( self.chosen_snapshot_id < 0):
-          snapshot_list = [mbsbackup.Snapshot.SnapshotID + self.chosen_snapshot_id + 1] # Remember chosen_snapshot_id is negative
+        if self.chosen_snapshot_id == None:
+            snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
+        elif self.chosen_snapshot_id < 0:
+            snapshot_list = [mbsbackup.Snapshot.SnapshotID + self.chosen_snapshot_id + 1] # Remember chosen_snapshot_id is negative
         else:
-          snapshot_list = [self.chosen_snapshot_id]
+            snapshot_list = [self.chosen_snapshot_id]
 
         for snapshot in snapshot_list:
             print "Listing snapshot %d..." % (snapshot)
             files = self.list_files(backupUDID, snapshot)
             print "Files in snapshot %d" % (len(files))
 
-            def matches_allowed_item_types(file):
-                return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in file.RelativePath.lower() \
+            def matches_allowed_item_types(a_file):
+                return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in a_file.RelativePath.lower() \
                         for item_type in item_types)
 
             if len(item_types) > 0:
@@ -430,11 +430,11 @@ class MobileBackupClient(object):
 
             if len(files):
                 authTokens = self.get_files(backupUDID, snapshot, files)
-                if ( len(authTokens.tokens) > 0 ):
-                  self.authorize_get(authTokens, snapshot)
+                if len(authTokens.tokens) > 0:
+                    self.authorize_get(authTokens, snapshot)
 
-                  if self.itunes_style:
-                      self.write_info_plist(mbsbackup, snapshot)
+                    if self.itunes_style:
+                        self.write_info_plist(mbsbackup, snapshot)
                 else:
                   print "Unable to download snapshot. This snapshot may not have finished uploading yet."
 
