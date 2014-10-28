@@ -494,21 +494,25 @@ def download_backup(login, password, output_folder, types, combined, itunes_styl
     mbsacct = client.get_account()
 
     print "Available Devices: ", len(mbsacct.backupUDID)
-    for i, device in enumerate(mbsacct.backupUDID):
-        backup = client.get_backup(device)
-        print "===[", i, "]==="
-        print "\tUDID: ", backup.backupUDID.encode("hex")
-        print "\tDevice: ", backup.Attributes.MarketingName
-        print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
-        print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
+    if len(mbsacct.backupUDID) > 0:
+        for i, device in enumerate(mbsacct.backupUDID):
+            backup = client.get_backup(device)
+            print "===[", i, "]==="
+            print "\tUDID: ", backup.backupUDID.encode("hex")
+            print "\tDevice: ", backup.Attributes.MarketingName
+            print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
+            print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
 
-    if i == 0:
-        UDID = mbsacct.backupUDID[0]
+        if i == 0:
+            UDID = mbsacct.backupUDID[0]
+        else:
+            id = raw_input("\nSelect backup to download (0-{}): ".format(i))
+            UDID = mbsacct.backupUDID[int(id)]
+
+        client.download(UDID, types)
+
     else:
-        id = raw_input("\nSelect backup to download (0-{}): ".format(i))
-        UDID = mbsacct.backupUDID[int(id)]
-
-    client.download(UDID, types)
+        print "There are no backups to download!"
 
 def backup_summary(mbsbackup):
     d = datetime.utcfromtimestamp(mbsbackup.Snapshot.LastModified)
