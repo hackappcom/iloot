@@ -192,7 +192,7 @@ class MobileBackupClient(object):
         files = ""
 
         offset = 0
-        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+        new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId]['listFiles'](offset=offset, limit=limit))
         while new_files:
             files = files + new_files
             offset += limit;
