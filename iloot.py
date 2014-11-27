@@ -116,9 +116,6 @@ class URLFactory(object):
     def __init__(self, base=None):
         self.components = []
         self.base = base
-        self.chosen_snapshot_id = None;
-        self.combined = False;
-        self.itunes_style = False;
 
         if self.base is not None:
             self.components.append(self.base)
@@ -177,6 +174,11 @@ class MobileBackupClient(object):
 
         self.files = {}
         self.output_folder = output_folder
+
+        self.chosen_snapshot_id = None;
+        self.combined = False;
+        self.itunes_style = False;
+        self.domain_filter = None;
 
     def mobile_backup_request(self, method, url, msg=None, body=""):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
@@ -293,7 +295,7 @@ class MobileBackupClient(object):
             if self.combined:
                 directory = self.output_folder
             else:
-                directory = os.path.join(self.output_folder, "snapshot_"+snapshot.encode('utf-8'))
+                directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
             path_hash = hashlib.sha1(file.Domain.encode('utf-8')+"-"+file.RelativePath.encode('utf-8')).hexdigest()
             path = os.path.join(directory, path_hash)
@@ -370,6 +372,8 @@ class MobileBackupClient(object):
 
                 new_file.truncate(decrypted_size)
 
+                os.remove(oldpath) # Delete the encrypted file
+
     def computeIV(self, lba):
         iv = ""
         lba &= 0xffffffff
@@ -420,13 +424,20 @@ class MobileBackupClient(object):
             files = self.list_files(backupUDID, snapshot)
             print "Files in snapshot %d" % (len(files))
 
+            def matches_allowed_domain(a_file):
+                return self.domain_filter in a_file.Domain
+
             def matches_allowed_item_types(a_file):
                 return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in a_file.RelativePath.lower() \
                         for item_type in item_types)
 
+            if self.domain_filter:
+                files = filter(matches_allowed_domain, files)
+
             if len(item_types) > 0:
                 files = filter(matches_allowed_item_types, files)
-                print "Downloading %d files due to filter" % (len(files))
+
+            print "Downloading %d files due to filter" % (len(files))
 
             if len(files):
                 authTokens = self.get_files(backupUDID, snapshot, files)
@@ -486,7 +497,7 @@ class MobileBackupClient(object):
 
 
 
-def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style):
+def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
     print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
@@ -511,6 +522,7 @@ def download_backup(login, password, output_folder, types, chosen_snapshot_id, c
     client.chosen_snapshot_id = chosen_snapshot_id
     client.combined = combined
     client.itunes_style = itunes_style
+    client.domain_filter = domain
 
     mbsacct = client.get_account()
 
@@ -562,6 +574,9 @@ if __name__ == "__main__":
                     "address_book, calendar, sms, call_history, voicemails, " \
                     "movies and photos. E.g., --types sms voicemail")
 
+    parser.add_argument("--domain", "-d", type=str, default=None,
+            help="Limit files to those within a specific application domain")
+
     args = parser.parse_args()
-    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style)
+    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain)
 
