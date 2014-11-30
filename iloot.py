@@ -464,7 +464,7 @@ class MobileBackupClient(object):
             "Serial Number" : mbsbackup.Attributes.SerialNumber,
             "Target Type" : "Device",
             "iTunes Version" : "11.1",
-            "Product Version" : "8.1.1",  # Must be higher than 4.0 for iScavenge, current iTunes backup sets to 8.1.1
+            "Product Version" : "8.1.1",  # Must be higher than 4.0, current iTunes backup sets to 8.1.1
             "Target Identifier" : mbsbackup.backupUDID.encode("hex"),
             "Unique Identifier" : mbsbackup.backupUDID.encode("hex")
         }
