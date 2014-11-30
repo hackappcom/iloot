@@ -175,10 +175,10 @@ class MobileBackupClient(object):
         self.files = {}
         self.output_folder = output_folder
 
-        self.chosen_snapshot_id = None;
-        self.combined = False;
-        self.itunes_style = False;
-        self.domain_filter = None;
+        self.chosen_snapshot_id = None
+        self.combined = False
+        self.itunes_style = False
+        self.domain_filter = None
 
     def mobile_backup_request(self, method, url, msg=None, body=""):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
@@ -200,7 +200,7 @@ class MobileBackupClient(object):
         new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=limit))
         while new_files:
             files = files + new_files
-            offset += limit;
+            offset += limit
 
             new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=limit))
             print "\tShifting offset: ", offset
@@ -381,9 +381,9 @@ class MobileBackupClient(object):
         lba &= 0xffffffff
         for _ in xrange(4):
             if (lba & 1):
-                lba = 0x80000061 ^ (lba >> 1);
+                lba = 0x80000061 ^ (lba >> 1)
             else:
-                lba = lba >> 1;
+                lba = lba >> 1
 
             iv += struct.pack("<L", lba)
 
@@ -485,7 +485,7 @@ class MobileBackupClient(object):
         else:
             directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
-        filename = os.path.join(directory, "Manifest.mbdb");
+        filename = os.path.join(directory, "Manifest.mbdb")
 
         # Generate the bare minimum MBDB file
 
@@ -494,7 +494,7 @@ class MobileBackupClient(object):
 
         # Write file header
         mbdb_file.write("mbdb")
-        mbdb_file.write("\x00\x00");
+        mbdb_file.write("\x00\x00")
 
         # For each file
         for key, file in self.files.iteritems():
