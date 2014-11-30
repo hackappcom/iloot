@@ -40,7 +40,7 @@ ITEM_TYPES_TO_FILE_NAMES = {
     'movies':".mov",
     'sms': "sms.db",
     'voicemails': "voicemail",
-    'notes' : "notes.",
+    'notes' : "notes."
 }
 
 def mkdir_p(path):
@@ -457,44 +457,20 @@ class MobileBackupClient(object):
         else:
             directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
-        plist_file = open(directory+"/Info.plist", "w")
+        info_plist = {
+            "Device Name" : mbsbackup.Attributes.DeviceClass,
+            "Display Name" : mbsbackup.Attributes.DeviceClass,
+            "Product Type" : mbsbackup.Attributes.ProductType,
+            "Serial Number" : mbsbackup.Attributes.SerialNumber,
+            "Target Type" : "Device",
+            "iTunes Version" : "11.1",
+            "Product Version" : "8.1.1",  # Must be higher than 4.0 for iScavenge, current iTunes backup sets to 8.1.1
+            "Target Identifier" : mbsbackup.backupUDID.encode("hex"),
+            "Unique Identifier" : mbsbackup.backupUDID.encode("hex")
+        }
 
-        # TODO: Use plistlib to generate the XML
-        plist_file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        plist_file.write("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
-        plist_file.write("<plist version=\"1.0\">\n")
-        plist_file.write("<dict>\n")
-        plist_file.write("    <key>Build Version</key>\n")
-        plist_file.write("    <string>10B329</string>\n")
-        plist_file.write("    <key>Device Name</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
-        plist_file.write("    <key>Display Name</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
-        plist_file.write("    <key>GUID</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>IMEI</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Product Type</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.HardwareModel))
-        plist_file.write("    <key>Product Version</key>\n")
-        plist_file.write("    <string>6.1.3</string>\n")
-        plist_file.write("    <key>Serial Number</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Target Identifier</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Target Type</key>\n")
-        plist_file.write("    <string>Device</string>\n")
-        plist_file.write("    <key>Unique Identifier</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>iTunes Settings</key>\n")
-        plist_file.write("    <dict/>\n")
-        plist_file.write("    <key>iTunes Version</key>\n")
-        plist_file.write("    <string>11.1</string>\n")
-        plist_file.write("</dict>\n")
-        plist_file.write("</plist>\n")
-
-        plist_file.close()
-
+        with open(directory+"/Info.plist", 'wb') as fp:
+            plistlib.writePlist(info_plist, fp)
 
 
 def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
