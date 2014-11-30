@@ -261,7 +261,9 @@ class MobileBackupClient(object):
                         except:
                             raise
                         else:
-                            del self.files[file_ref.file_checksum]
+                            # With iTunes style we need to keep the file
+                            if not self.itunes_style :
+                                del self.files[file_ref.file_checksum]
 
         return file_groups
 
@@ -446,8 +448,13 @@ class MobileBackupClient(object):
 
                     if self.itunes_style:
                         self.write_info_plist(mbsbackup, snapshot)
+                        self.write_manifest_mbdb(snapshot)
                 else:
                   print "Unable to download snapshot. This snapshot may not have finished uploading yet."
+
+            # Clean up self.files
+            if not self.combined :
+                self.files = {}
 
 
     # Writes a plist file in the output_directory simular to that created by iTunes during backup
@@ -471,6 +478,47 @@ class MobileBackupClient(object):
 
         with open(directory+"/Info.plist", 'wb') as fp:
             plistlib.writePlist(info_plist, fp)
+
+    def write_manifest_mbdb(self, snapshot):
+        if self.combined:
+            directory = self.output_folder
+        else:
+            directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+
+        filename = os.path.join(directory, "Manifest.mbdb");
+
+        # Generate the bare minimum MBDB file
+
+        # Open file
+        mbdb_file = open(filename, "wb")
+
+        # Write file header
+        mbdb_file.write("mbdb")
+        mbdb_file.write("\x00\x00");
+
+        # For each file
+        for key, file in self.files.iteritems():
+            # Write App Domain length
+            mbdb_file.write( struct.pack('>h', len(file.Domain)) )
+            # Write App Domain
+            mbdb_file.write( file.Domain )
+            # Write iPhone Filename length
+            mbdb_file.write( struct.pack('>h', len(file.RelativePath)) )
+            # Write iPhone Filename
+            mbdb_file.write( file.RelativePath )
+            # Write 0xFFFF for Link Target Length signifying that it is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0xFFFF for SHAChecksum Length signifying the checksum is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0xFFFF for the length of some unknown value, signifying it is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0x27 bytes of 0x00, for the file properties as set by the iPhone during restore
+            mbdb_file.write("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+            # Write 0x00 for extended property count
+            mbdb_file.write("\x00")
+
+        # Close file
+        mbdb_file.close()
 
 
 def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
