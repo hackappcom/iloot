@@ -178,6 +178,7 @@ class MobileBackupClient(object):
         self.chosen_snapshot_id = None
         self.combined = False
         self.itunes_style = False
+        self.downloaded_files = []
         self.domain_filter = None
 
     def mobile_backup_request(self, method, url, msg=None, body=""):
@@ -262,8 +263,10 @@ class MobileBackupClient(object):
                             raise
                         else:
                             # With iTunes style we need to keep the file
-                            if not self.itunes_style :
-                                del self.files[file_ref.file_checksum]
+                            if self.itunes_style :
+                                self.downloaded_files.append(file)
+
+                            del self.files[file_ref.file_checksum]
 
         return file_groups
 
@@ -454,7 +457,7 @@ class MobileBackupClient(object):
 
             # Clean up self.files
             if not self.combined :
-                self.files = {}
+                self.downloaded_files = []
 
 
     # Writes a plist file in the output_directory simular to that created by iTunes during backup
@@ -497,7 +500,7 @@ class MobileBackupClient(object):
         mbdb_file.write("\x00\x00")
 
         # For each file
-        for key, file in self.files.iteritems():
+        for file in self.downloaded_files:
             # Write App Domain length
             mbdb_file.write( struct.pack('>h', len(file.Domain)) )
             # Write App Domain
