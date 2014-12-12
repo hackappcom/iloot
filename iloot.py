@@ -33,12 +33,14 @@ USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
 
 ITEM_TYPES_TO_FILE_NAMES = {
-    'address_book': "AddressBook.sqlitedb",
+    'address_book': "addressbook.sqlitedb",
     'calendar': "Calendar.sqlitedb",
     'call_history': "call_history.db",
-    'photos': ".JPG",
+    'photos': ".jpg",
+    'movies':".mov",
     'sms': "sms.db",
-    'voicemails': "Voicemail",
+    'voicemails': "voicemail",
+    'notes' : "notes."
 }
 
 def mkdir_p(path):
@@ -114,8 +116,6 @@ class URLFactory(object):
     def __init__(self, base=None):
         self.components = []
         self.base = base
-        self.combined = False;
-        self.itunes_style = False;
 
         if self.base is not None:
             self.components.append(self.base)
@@ -175,6 +175,12 @@ class MobileBackupClient(object):
         self.files = {}
         self.output_folder = output_folder
 
+        self.chosen_snapshot_id = None
+        self.combined = False
+        self.itunes_style = False
+        self.downloaded_files = []
+        self.domain_filter = None
+
     def mobile_backup_request(self, method, url, msg=None, body=""):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
 
@@ -195,9 +201,9 @@ class MobileBackupClient(object):
         new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId]['listFiles'](offset=offset, limit=limit))
         while new_files:
             files = files + new_files
-            offset += limit;
+            offset += limit
 
-            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId](offset=offset, limit=limit))
+            new_files = self.mobile_backup_request("GET", MBS[self.dsPrsID][backupUDID.encode("hex")][snapshotId].listFiles(offset=offset, limit=limit))
             print "\tShifting offset: ", offset
 
         return decode_protobuf_array(files, MBSFile)
@@ -228,6 +234,9 @@ class MobileBackupClient(object):
         return z
 
     def authorize_get(self, tokens, snapshot):
+        if len(tokens.tokens) == 0:
+            return
+
         self.headers2["x-apple-mmcs-auth"]= "%s %s" % (tokens.tokens[0].FileID.encode("hex"), tokens.tokens[0].AuthToken)
         body = tokens.SerializeToString()
 
@@ -253,6 +262,10 @@ class MobileBackupClient(object):
                         except:
                             raise
                         else:
+                            # With iTunes style we need to keep the file
+                            if self.itunes_style :
+                                self.downloaded_files.append(file)
+
                             del self.files[file_ref.file_checksum]
 
         return file_groups
@@ -289,11 +302,11 @@ class MobileBackupClient(object):
             else:
                 directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
-            path_hash = hashlib.sha1(file.Domain+"-"+file.RelativePath).hexdigest()
+            path_hash = hashlib.sha1(file.Domain.encode('utf-8')+"-"+file.RelativePath.encode('utf-8')).hexdigest()
             path = os.path.join(directory, path_hash)
         else:
             if self.combined:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_",file.Domain))
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", file.Domain))
                 path = os.path.join(directory, file.RelativePath)
             else:
                 directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
@@ -313,15 +326,18 @@ class MobileBackupClient(object):
             key = file.Attributes.EncryptionKey
             ProtectionClass = struct.unpack(">L", key[0x18:0x1C])[0]
             if ProtectionClass == file.Attributes.ProtectionClass:
+                wrapped_key = None
+                filekey = None
                 if file.Attributes.EncryptionKeyVersion and file.Attributes.EncryptionKeyVersion == 2:
-                    assert self.kb.uuid == key[:0x10]
-                    keyLength = struct.unpack(">L", key[0x20:0x24])[0]
-                    assert keyLength == 0x48
-                    wrapped_key = key[0x24:]
+                    if self.kb.uuid == key[:0x10]:
+                        keyLength = struct.unpack(">L", key[0x20:0x24])[0]
+                        if keyLength == 0x48:
+                            wrapped_key = key[0x24:]
                 else:
                     wrapped_key = key[0x1C:]
 
-                filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
+                if wrapped_key:
+                    filekey = self.kb.unwrapCurve25519(ProtectionClass, wrapped_key)
 
                 if not filekey:
                     print "Failed to unwrap file key for file %s !!!" % file.RelativePath
@@ -361,14 +377,16 @@ class MobileBackupClient(object):
 
                 new_file.truncate(decrypted_size)
 
+                os.remove(oldpath) # Delete the encrypted file
+
     def computeIV(self, lba):
         iv = ""
         lba &= 0xffffffff
         for _ in xrange(4):
             if (lba & 1):
-                lba = 0x80000061 ^ (lba >> 1);
+                lba = 0x80000061 ^ (lba >> 1)
             else:
-                lba = lba >> 1;
+                lba = lba >> 1
 
             iv += struct.pack("<L", lba)
 
@@ -398,26 +416,49 @@ class MobileBackupClient(object):
             print "Unable to unlock OTA keybag !"
             return
 
-        print "Available Snapshots: ", mbsbackup.Snapshot.SnapshotID
-        #for snapshot in xrange(1, mbsbackup.Snapshot.SnapshotID+1):
-        for snapshot in [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]:
-            print "Listing snapshot..."
-            files = self.list_files(backupUDID, snapshot)
-            print "Files in snapshot %s : %s" % (snapshot, len(files))
+        print "Available Snapshots: %d" % (mbsbackup.Snapshot.SnapshotID)
+        if self.chosen_snapshot_id == None:
+            snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
+        elif self.chosen_snapshot_id < 0:
+            snapshot_list = [mbsbackup.Snapshot.SnapshotID + self.chosen_snapshot_id + 1] # Remember chosen_snapshot_id is negative
+        else:
+            snapshot_list = [self.chosen_snapshot_id]
 
-            def matches_allowed_item_types(file):
-                return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in file.RelativePath \
+        for snapshot in snapshot_list:
+            print "Listing snapshot %d..." % (snapshot)
+            files = self.list_files(backupUDID, snapshot)
+            print "Files in snapshot %d" % (len(files))
+
+            def matches_allowed_domain(a_file):
+                return self.domain_filter in a_file.Domain
+
+            def matches_allowed_item_types(a_file):
+                return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in a_file.RelativePath.lower() \
                         for item_type in item_types)
+
+            if self.domain_filter:
+                files = filter(matches_allowed_domain, files)
 
             if len(item_types) > 0:
                 files = filter(matches_allowed_item_types, files)
 
+            print "Downloading %d files due to filter" % (len(files))
+
             if len(files):
                 authTokens = self.get_files(backupUDID, snapshot, files)
-                self.authorize_get(authTokens, snapshot)
+                if len(authTokens.tokens) > 0:
+                    self.authorize_get(authTokens, snapshot)
 
-            if self.itunes_style:
-                self.write_info_plist(mbsbackup, snapshot)
+                    if self.itunes_style:
+                        self.write_info_plist(mbsbackup, snapshot)
+                        self.write_manifest_mbdb(snapshot)
+                else:
+                  print "Unable to download snapshot. This snapshot may not have finished uploading yet."
+
+            # Clean up self.files
+            if not self.combined :
+                self.downloaded_files = []
+
 
     # Writes a plist file in the output_directory simular to that created by iTunes during backup
     def write_info_plist(self, mbsbackup, snapshot):
@@ -426,47 +467,64 @@ class MobileBackupClient(object):
         else:
             directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
 
-        plist_file = open(directory+"/Info.plist", "w")
+        info_plist = {
+            "Device Name" : mbsbackup.Attributes.DeviceClass,
+            "Display Name" : mbsbackup.Attributes.DeviceClass,
+            "Product Type" : mbsbackup.Attributes.ProductType,
+            "Serial Number" : mbsbackup.Attributes.SerialNumber,
+            "Target Type" : "Device",
+            "iTunes Version" : "11.1",
+            "Product Version" : "8.1.1",  # Must be higher than 4.0, current iTunes backup sets to 8.1.1
+            "Target Identifier" : mbsbackup.backupUDID.encode("hex"),
+            "Unique Identifier" : mbsbackup.backupUDID.encode("hex")
+        }
 
-        # TODO: Use plistlib to generate the XML
-        plist_file.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        plist_file.write("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
-        plist_file.write("<plist version=\"1.0\">\n")
-        plist_file.write("<dict>\n")
-        plist_file.write("    <key>Build Version</key>\n")
-        plist_file.write("    <string>10B329</string>\n")
-        plist_file.write("    <key>Device Name</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
-        plist_file.write("    <key>Display Name</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.DeviceClass))
-        plist_file.write("    <key>GUID</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>IMEI</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Product Type</key>\n")
-        plist_file.write("    <string>{}</string>\n".format(mbsbackup.Attributes.HardwareModel))
-        plist_file.write("    <key>Product Version</key>\n")
-        plist_file.write("    <string>6.1.3</string>\n")
-        plist_file.write("    <key>Serial Number</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Target Identifier</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>Target Type</key>\n")
-        plist_file.write("    <string>Device</string>\n")
-        plist_file.write("    <key>Unique Identifier</key>\n")
-        plist_file.write("    <string></string>\n")
-        plist_file.write("    <key>iTunes Settings</key>\n")
-        plist_file.write("    <dict/>\n")
-        plist_file.write("    <key>iTunes Version</key>\n")
-        plist_file.write("    <string>11.1</string>\n")
-        plist_file.write("</dict>\n")
-        plist_file.write("</plist>\n")
+        with open(directory+"/Info.plist", 'wb') as fp:
+            plistlib.writePlist(info_plist, fp)
 
-        plist_file.close()
+    def write_manifest_mbdb(self, snapshot):
+        if self.combined:
+            directory = self.output_folder
+        else:
+            directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+
+        filename = os.path.join(directory, "Manifest.mbdb")
+
+        # Generate the bare minimum MBDB file
+
+        # Open file
+        mbdb_file = open(filename, "wb")
+
+        # Write file header
+        mbdb_file.write("mbdb")
+        mbdb_file.write("\x00\x00")
+
+        # For each file
+        for file in self.downloaded_files:
+            # Write App Domain length
+            mbdb_file.write( struct.pack('>h', len(file.Domain)) )
+            # Write App Domain
+            mbdb_file.write( file.Domain )
+            # Write iPhone Filename length
+            mbdb_file.write( struct.pack('>h', len(file.RelativePath)) )
+            # Write iPhone Filename
+            mbdb_file.write( file.RelativePath )
+            # Write 0xFFFF for Link Target Length signifying that it is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0xFFFF for SHAChecksum Length signifying the checksum is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0xFFFF for the length of some unknown value, signifying it is not present
+            mbdb_file.write("\xFF\xFF")
+            # Write 0x27 bytes of 0x00, for the file properties as set by the iPhone during restore
+            mbdb_file.write("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+            # Write 0x00 for extended property count
+            mbdb_file.write("\x00")
+
+        # Close file
+        mbdb_file.close()
 
 
-
-def download_backup(login, password, output_folder, types, combined, itunes_style):
+def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
     print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
@@ -488,8 +546,10 @@ def download_backup(login, password, output_folder, types, combined, itunes_styl
     auth = "X-MobileMe-AuthToken %s" % base64.b64encode("%s:%s" % (dsPrsID, authenticateResponse["tokens"]["mmeAuthToken"]))
     client = MobileBackupClient(account_settings, dsPrsID, auth, output_folder)
 
+    client.chosen_snapshot_id = chosen_snapshot_id
     client.combined = combined
     client.itunes_style = itunes_style
+    client.domain_filter = domain
 
     mbsacct = client.get_account()
 
@@ -529,15 +589,23 @@ if __name__ == "__main__":
     parser.add_argument("--combined", action="store_true",
             help="Do not separate each snapshot into its own folder")
 
-    parser.add_argument("--itunes_style", action="store_true",
+    parser.add_argument("--snapshot", type=int, default=None,
+            help="Only download data the snapshot with the specified ID. " \
+                    "Negative numbers will indicate relative position from " \
+                    "newest backup, with -1 being the newest, -2 second, etc.")
+
+    parser.add_argument("--itunes-style", action="store_true",
             help="Save the files in a flat iTunes-style backup, with " \
                     "mangled names")
 
     parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
             help="Only download the specified item types. Options include " \
                     "address_book, calendar, sms, call_history, voicemails, " \
-                    "and photos. E.g., --types sms voicemail")
+                    "movies and photos. E.g., --types sms voicemail")
+
+    parser.add_argument("--domain", "-d", type=str, default=None,
+            help="Limit files to those within a specific application domain")
 
     args = parser.parse_args()
-    download_backup(args.apple_id, args.password, args.output, args.item_types, args.combined, args.itunes_style)
+    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain)
 
