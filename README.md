@@ -23,7 +23,9 @@ Example
 
 ```bash
 $ python iloot.py -h
-usage: iloot [-h] [--output OUTPUT] [--item-types ITEM_TYPES [ITEM_TYPES ...]]
+usage: iloot [-h] [--output OUTPUT] [--combined] [--snapshot SNAPSHOT]
+             [--itunes-style] [--item-types ITEM_TYPES [ITEM_TYPES ...]]
+             [--domain DOMAIN]
              apple_id password
 
 positional arguments:
@@ -31,13 +33,24 @@ positional arguments:
   password              Password
 
 optional arguments:
-  -h, --help            show this help message and exit
+  -h, --help            Show this help message and exit.
   --output OUTPUT, -o OUTPUT
-                        Output Directory
+                        Output directory.
+  --combined            Do not separate each snapshot into its own folder
+  --snapshot SNAPSHOT   Only download data the snapshot with the specified ID.
+                        Negative numbers will indicate relative position from
+                        newest backup, with -1 being the newest, -2 second,
+                        etc.
+  --itunes-style        Save the files in a flat iTunes-style backup, with
+                        mangled names.
   --item-types ITEM_TYPES [ITEM_TYPES ...], -t ITEM_TYPES [ITEM_TYPES ...]
                         Only download the specified item types. Options
                         include address_book, calendar, sms, call_history,
-                        voicemails, and photos. E.g., --types sms voicemail
+                        voicemails, movies and photos. E.g., --types sms
+                        voicemail
+  --domain DOMAIN, -d DOMAIN
+                        Limit files to those within a specific application
+                        domain
 ```
 
 By default, the tool will download everything in a backup. If you'd only like to download a specific item type (such as all SMSs), just specify the `--item-types` argument. For instance:
