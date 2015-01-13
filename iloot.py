@@ -411,7 +411,7 @@ class MobileBackupClient(object):
 
         print "Got OTA Keybag"
 
-        self.kb = Keybag(keys.Key[1].KeyData)
+        self.kb = Keybag(keys.Key[-1].KeyData)
         if not self.kb.unlockBackupKeybagWithPasscode(keys.Key[0].KeyData):
             print "Unable to unlock OTA keybag !"
             return
