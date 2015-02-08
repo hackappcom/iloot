@@ -253,7 +253,8 @@ class MobileBackupClient(object):
 
                     for i, reference in enumerate(file_ref.chunk_references):
                         if reference.container_index == container_index:
-                            decrypted_chunks[i] = data[reference.chunk_index]
+                            if (reference.chunk_index < len(data)):
+                                decrypted_chunks[i] = data[reference.chunk_index]
 
                     if len(decrypted_chunks) == len(file_ref.chunk_references):
                         file = self.files[file_ref.file_checksum]
