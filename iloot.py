@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
 # from __future__ import print_function
+import gevent
+from gevent.pool import Pool
+from gevent import monkey
+monkey.patch_all()
 
 from datetime import datetime
 from httplib import HTTPSConnection
@@ -8,13 +12,11 @@ from pprint import pprint
 import argparse
 import base64
 import errno
-import getpass
 import hashlib
 import os
 import plistlib
 import re
 import struct
-import sys
 import urllib
 import urlparse
 
@@ -31,7 +33,7 @@ USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
-
+DEFAULT_THREADS = 5
 ITEM_TYPES_TO_FILE_NAMES = {
     'address_book': "addressbook.sqlitedb",
     'calendar': "Calendar.sqlitedb",
@@ -180,6 +182,7 @@ class MobileBackupClient(object):
         self.itunes_style = False
         self.downloaded_files = []
         self.domain_filter = None
+        self.threads = DEFAULT_THREADS
 
     def mobile_backup_request(self, method, url, msg=None, body=""):
         return probobuf_request(self.mobilebackup_host, method, url, body, self.headers, msg)
@@ -242,32 +245,41 @@ class MobileBackupClient(object):
 
         file_groups = probobuf_request(self.content_host, "POST", URL[self.dsPrsID].authorizeGet(), body, self.headers2, FileGroups)
         file_chunks = {}
+        pool = Pool(self.threads)
+
+        containers = []
         for group in file_groups.file_groups:
             for container_index, container in enumerate(group.storage_host_chunk_list):
-                data = self.download_chunks(container)
-                for file_ref in group.file_checksum_chunk_references:
-                    if file_ref.file_checksum not in self.files:
-                        continue
+                containers.append([group, container_index, container])
 
-                    decrypted_chunks = file_chunks.setdefault(file_ref.file_checksum, {})
+        for res in pool.imap_unordered(self.download_chunks, containers):
+            args, data = res
+            group, container_index, container = args
 
-                    for i, reference in enumerate(file_ref.chunk_references):
-                        if reference.container_index == container_index:
-                            decrypted_chunks[i] = data[reference.chunk_index]
+            for file_ref in group.file_checksum_chunk_references:
+                if file_ref.file_checksum not in self.files:
+                    continue
 
-                    if len(decrypted_chunks) == len(file_ref.chunk_references):
-                        file = self.files[file_ref.file_checksum]
-                        try:
-                            self.write_file(file, decrypted_chunks, snapshot)
-                        except:
-                            raise
-                        else:
-                            # With iTunes style we need to keep the file
-                            if self.itunes_style :
-                                self.downloaded_files.append(file)
+                decrypted_chunks = file_chunks.setdefault(file_ref.file_checksum, {})
 
-                            del self.files[file_ref.file_checksum]
+                for i, reference in enumerate(file_ref.chunk_references):
+                    if reference.container_index == container_index:
+                        decrypted_chunks[i] = data[reference.chunk_index]
 
+                if len(decrypted_chunks) == len(file_ref.chunk_references):
+                    file = self.files[file_ref.file_checksum]
+                    try:
+                        self.write_file(file, decrypted_chunks, snapshot)
+                    except:
+                        raise
+                    else:
+                        # With iTunes style we need to keep the file
+                        if self.itunes_style :
+                            self.downloaded_files.append(file)
+
+                        del self.files[file_ref.file_checksum]
+
+        pool.join()
         return file_groups
 
     def get_complete(self, mmcs_auth):
@@ -275,7 +287,9 @@ class MobileBackupClient(object):
         body = ""
         probobuf_request(self.content_host, "POST", URL[self.dsPrsID].getComplete(), body, self.headers2)
 
-    def download_chunks(self, container):
+    def download_chunks(self, args):
+        group, container_index, container = args
+
         headers = {}
         # XXX
         for header in container.host_info.headers:
@@ -292,7 +306,7 @@ class MobileBackupClient(object):
                 decrypted.append(dchunk)
                 i += chunk.chunk_length
 
-        return decrypted
+        return args, decrypted
 
     def write_file(self, file, decrypted_chunks, snapshot):
         # If the filename should be left in the iTunes backup style
@@ -524,7 +538,7 @@ class MobileBackupClient(object):
         mbdb_file.close()
 
 
-def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
+def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain, threads):
     print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
@@ -550,6 +564,7 @@ def download_backup(login, password, output_folder, types, chosen_snapshot_id, c
     client.combined = combined
     client.itunes_style = itunes_style
     client.domain_filter = domain
+    client.threads = threads
 
     mbsacct = client.get_account()
 
@@ -583,6 +598,7 @@ if __name__ == "__main__":
     parser.add_argument("apple_id", type=str, default=None, help="Apple ID")
     parser.add_argument("password", type=str, default=None, help="Password")
 
+    parser.add_argument("--threads", type=int, default=DEFAULT_THREADS, help="Download thread pool size")
     parser.add_argument("--output", "-o", type=str, default="output",
             help="Output Directory")
 
@@ -607,5 +623,5 @@ if __name__ == "__main__":
             help="Limit files to those within a specific application domain")
 
     args = parser.parse_args()
-    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain)
+    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain, args.threads)
 
