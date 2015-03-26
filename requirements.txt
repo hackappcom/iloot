@@ -1,3 +1,4 @@
+git+https://github.com/cloudflare/gevent.git#egg=gevent
 hurry.filesize
 pycrypto
 protobuf
