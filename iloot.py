@@ -98,6 +98,7 @@ def probobuf_request(host, method, url, body, headers, msg=None):
         length = int(length)
 
     data = response.read()
+    #print data
 
     while len(data) < length:
         d = response.read()
@@ -245,6 +246,7 @@ class MobileBackupClient(object):
         for group in file_groups.file_groups:
             for container_index, container in enumerate(group.storage_host_chunk_list):
                 data = self.download_chunks(container)
+                #print len(data)
                 for file_ref in group.file_checksum_chunk_references:
                     if file_ref.file_checksum not in self.files:
                         continue
@@ -524,7 +526,7 @@ class MobileBackupClient(object):
         mbdb_file.close()
 
 
-def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
+def download_backup(auth_token,login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain):
     print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
@@ -579,33 +581,34 @@ def backup_summary(mbsbackup):
     return "%s %s %s %s" % (str(d), mbsbackup.Attributes.MarketingName, mbsbackup.Snapshot.Attributes.DeviceName, mbsbackup.Snapshot.Attributes.ProductVersion)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog='iloot')
-    parser.add_argument("apple_id", type=str, default=None, help="Apple ID")
-    parser.add_argument("password", type=str, default=None, help="Password")
+	parser = argparse.ArgumentParser(prog='iloot')
+	parser.add_argument("--apple_id","-id",  type=str, default=None, help="Apple ID")
+	parser.add_argument("--password","-p",  type=str, default=None, help="Password")
+	parser.add_argument("--auth_token","-at",  type=str, default=None, help="mmeAuthToken")
 
-    parser.add_argument("--output", "-o", type=str, default="output",
-            help="Output Directory")
+	parser.add_argument("--output", "-o", type=str, default="output",
+			help="Output Directory")
 
-    parser.add_argument("--combined", action="store_true",
-            help="Do not separate each snapshot into its own folder")
+	parser.add_argument("--combined", action="store_true",
+			help="Do not separate each snapshot into its own folder")
 
-    parser.add_argument("--snapshot", type=int, default=None,
-            help="Only download data the snapshot with the specified ID. " \
-                    "Negative numbers will indicate relative position from " \
-                    "newest backup, with -1 being the newest, -2 second, etc.")
+	parser.add_argument("--snapshot", type=int, default=None,
+			help="Only download data the snapshot with the specified ID. " \
+					"Negative numbers will indicate relative position from " \
+					"newest backup, with -1 being the newest, -2 second, etc.")
 
-    parser.add_argument("--itunes-style", action="store_true",
-            help="Save the files in a flat iTunes-style backup, with " \
-                    "mangled names")
+	parser.add_argument("--itunes-style", action="store_true",
+			help="Save the files in a flat iTunes-style backup, with " \
+					"mangled names")
 
-    parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
-            help="Only download the specified item types. Options include " \
-                    "address_book, calendar, sms, call_history, voicemails, " \
-                    "movies and photos. E.g., --types sms voicemail")
+	parser.add_argument("--item-types", "-t", nargs="+", type=str, default="",
+			help="Only download the specified item types. Options include " \
+					"address_book, calendar, sms, call_history, voicemails, " \
+					"movies and photos. E.g., --types sms voicemail")
 
-    parser.add_argument("--domain", "-d", type=str, default=None,
-            help="Limit files to those within a specific application domain")
+	parser.add_argument("--domain", "-d", type=str, default=None,
+			help="Limit files to those within a specific application domain")
 
-    args = parser.parse_args()
-    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain)
+	args = parser.parse_args()
+	download_backup(args.auth_token,args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain)
 
