@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-
-
 # from __future__ import print_function
+
 import gevent
 from gevent.pool import Pool
 from gevent import monkey
@@ -265,7 +264,10 @@ class MobileBackupClient(object):
 
                 for i, reference in enumerate(file_ref.chunk_references):
                     if reference.container_index == container_index:
-                        decrypted_chunks[i] = data[reference.chunk_index]
+                        if (len(data) > reference.chunk_index):
+                            decrypted_chunks[i] = data[reference.chunk_index]
+                        else:
+                            break
 
                 if len(decrypted_chunks) == len(file_ref.chunk_references):
                     file = self.files[file_ref.file_checksum]
@@ -391,7 +393,7 @@ class MobileBackupClient(object):
                     assert hash.digest() == trailer[8:]
 
                 new_file.truncate(decrypted_size)
-
+                old_file.close()
                 os.remove(oldpath) # Delete the encrypted file
 
     def computeIV(self, lba):
