@@ -313,8 +313,8 @@ class MobileBackupClient(object):
                           (container_index, DOWNLOAD_CHUNKS_ATTEMPTS_MAX - attempts + 1)
 
             except Exception as e:
-                print "Error downloading chunks (container %d) (%s) attempt %d of 10" % \
-                      (container_index, repr(e), DOWNLOAD_CHUNKS_ATTEMPTS_MAX - attempts + 1)
+                print "Error downloading chunks (container %d) (%s) attempt %d of %d" % \
+                      (container_index, repr(e), DOWNLOAD_CHUNKS_ATTEMPTS_MAX - attempts + 1, DOWNLOAD_CHUNKS_ATTEMPTS_MAX)
                 attempts -= 1
                 if 0 == attempts:
                     raise
