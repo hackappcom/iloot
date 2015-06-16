@@ -34,6 +34,7 @@ USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
 CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
 DEFAULT_THREADS = 100
+DOWNLOAD_CHUNKS_ATTEMPTS_MAX = 10
 ITEM_TYPES_TO_FILE_NAMES = {
     'address_book': "addressbook.sqlitedb",
     'calendar': "Calendar.sqlitedb",
@@ -298,9 +299,28 @@ class MobileBackupClient(object):
         for header in container.host_info.headers:
             headers[header.name] = header.value
 
-        d = probobuf_request(container.host_info.hostname,
+        # Attempt to download chunks in the container maximum of DOWNLOAD_CHUNKS_ATTEMPTS_MAX times. Re-raise
+        # the exception if still not successful.
+        attempts = DOWNLOAD_CHUNKS_ATTEMPTS_MAX
+        while attempts:
+            try:
+                d = probobuf_request(container.host_info.hostname,
                          container.host_info.method,
                          container.host_info.uri, "", headers)
+
+                if attempts < DOWNLOAD_CHUNKS_ATTEMPTS_MAX:
+                    print "Downloading chunks (container %d) - success on attempt %d" % \
+                          (container_index, DOWNLOAD_CHUNKS_ATTEMPTS_MAX - attempts + 1)
+
+            except Exception as e:
+                print "Error downloading chunks (container %d) (%s) attempt %d of %d" % \
+                      (container_index, repr(e), DOWNLOAD_CHUNKS_ATTEMPTS_MAX - attempts + 1, DOWNLOAD_CHUNKS_ATTEMPTS_MAX)
+                attempts -= 1
+                if 0 == attempts:
+                    raise
+            else:
+                break
+
         decrypted = []
         i = 0
         for chunk in container.chunk_info:
