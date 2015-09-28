@@ -26,6 +26,7 @@ $ python iloot.py -h
 usage: iloot [-h] [--threads THREADS] [--output OUTPUT] [--combined]
              [--snapshot SNAPSHOT] [--itunes-style]
              [--item-types ITEM_TYPES [ITEM_TYPES ...]] [--domain DOMAIN]
+             [--keep-existing]
              apple_id password
 
 positional arguments:
@@ -52,6 +53,10 @@ optional arguments:
   --domain DOMAIN, -d DOMAIN
                         Limit files to those within a specific application
                         domain
+  --keep-existing       Do not download files that has already been downloaded
+                        in a previous run. Skip files that already exist
+                        locally and that has the same file size locally as in
+                        the backup.
 ```
 
 By default, the tool will download everything in a backup. If you'd only like to download a specific item type (such as all SMSs), just specify the `--item-types` argument. For instance:

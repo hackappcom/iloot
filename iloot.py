@@ -332,22 +332,7 @@ class MobileBackupClient(object):
         return args, decrypted
 
     def write_file(self, file, decrypted_chunks, snapshot):
-        # If the filename should be left in the iTunes backup style
-        if self.itunes_style:
-            if self.combined:
-                directory = self.output_folder
-            else:
-                directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
-
-            path_hash = hashlib.sha1(file.Domain.encode('utf-8')+"-"+file.RelativePath.encode('utf-8')).hexdigest()
-            path = os.path.join(directory, path_hash)
-        else:
-            if self.combined:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", file.Domain))
-                path = os.path.join(directory, file.RelativePath)
-            else:
-                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
-                path = os.path.join(directory, file.RelativePath)
+        path = self.create_output_path(file, snapshot)
 
         mkdir_p(os.path.dirname(path))
 
@@ -383,6 +368,26 @@ class MobileBackupClient(object):
                     self.decrypt_protected_file(path, filekey, file.Attributes.DecryptedSize)
             else:
                 print "\tUnable to decrypt file, possible old backup format", file.RelativePath
+
+    def create_output_path(self, file, snapshot):
+        # If the filename should be left in the iTunes backup style
+        if self.itunes_style:
+            if self.combined:
+                directory = self.output_folder
+            else:
+                directory = os.path.join(self.output_folder, "snapshot_"+str(snapshot))
+
+            path_hash = hashlib.sha1(file.Domain.encode('utf-8')+"-"+file.RelativePath.encode('utf-8')).hexdigest()
+            path = os.path.join(directory, path_hash)
+        else:
+            if self.combined:
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", file.Domain))
+                path = os.path.join(directory, file.RelativePath)
+            else:
+                directory = os.path.join(self.output_folder, re.sub(r'[:|*<>?"]', "_", "snapshot_"+str(snapshot)+"/"+file.Domain))
+                path = os.path.join(directory, file.RelativePath)
+
+        return path
 
     def decrypt_protected_file(self, path, filekey, decrypted_size=0):
         ivkey = hashlib.sha1(filekey).digest()[:16]
@@ -473,6 +478,10 @@ class MobileBackupClient(object):
                 return any(ITEM_TYPES_TO_FILE_NAMES[item_type] in a_file.RelativePath.lower() \
                         for item_type in item_types)
 
+            def matches_missing_or_partial_files(a_file):
+                path = self.create_output_path(a_file, snapshot)
+                return not os.path.isfile(path) or os.stat(path).st_size != a_file.Size
+
             if self.domain_filter:
                 files = filter(matches_allowed_domain, files)
 
@@ -480,6 +489,12 @@ class MobileBackupClient(object):
                 files = filter(matches_allowed_item_types, files)
 
             print "Downloading %d files due to filter" % (len(files))
+
+            if (self.keep_existing):
+                file_count = len(files)
+                files = filter(matches_missing_or_partial_files, files)
+                print "Skipping %d files that have already been downloaded, " \
+                    "downloading %d files" % ((file_count - len(files)), len(files))
 
             if len(files):
                 authTokens = self.get_files(backupUDID, snapshot, files)
@@ -561,7 +576,7 @@ class MobileBackupClient(object):
         mbdb_file.close()
 
 
-def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain, threads):
+def download_backup(login, password, output_folder, types, chosen_snapshot_id, combined, itunes_style, domain, threads, keep_existing):
     print 'Working with %s : %s' % (login, password)
     print 'Output directory :', output_folder
 
@@ -588,6 +603,7 @@ def download_backup(login, password, output_folder, types, chosen_snapshot_id, c
     client.itunes_style = itunes_style
     client.domain_filter = domain
     client.threads = threads
+    client.keep_existing = keep_existing
 
     mbsacct = client.get_account()
 
@@ -645,6 +661,11 @@ if __name__ == "__main__":
     parser.add_argument("--domain", "-d", type=str, default=None,
             help="Limit files to those within a specific application domain")
 
+    parser.add_argument("--keep-existing", action="store_true",
+            help="Do not download files that has already been downloaded in " \
+                    "a previous run. Skip files that already exist locally " \
+                    "and that has the same file size locally as in the backup.")
+
     args = parser.parse_args()
-    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain, args.threads)
+    download_backup(args.apple_id, args.password, args.output, args.item_types, args.snapshot, args.combined, args.itunes_style, args.domain, args.threads, args.keep_existing)
 
