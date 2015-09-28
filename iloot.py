@@ -455,7 +455,10 @@ class MobileBackupClient(object):
 
         print "Available Snapshots: %d" % (mbsbackup.Snapshot.SnapshotID)
         if self.chosen_snapshot_id == None:
-            snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
+            if mbsbackup.Snapshot.SnapshotID > 3:
+                snapshot_list = [1, mbsbackup.Snapshot.SnapshotID - 1, mbsbackup.Snapshot.SnapshotID]
+            else:
+                snapshot_list = range(1, mbsbackup.Snapshot.SnapshotID + 1)
         elif self.chosen_snapshot_id < 0:
             snapshot_list = [mbsbackup.Snapshot.SnapshotID + self.chosen_snapshot_id + 1] # Remember chosen_snapshot_id is negative
         else:
