@@ -23,9 +23,9 @@ Example
 
 ```bash
 $ python iloot.py -h
-usage: iloot [-h] [--output OUTPUT] [--combined] [--snapshot SNAPSHOT]
-             [--itunes-style] [--item-types ITEM_TYPES [ITEM_TYPES ...]]
-             [--domain DOMAIN]
+usage: iloot [-h] [--threads THREADS] [--output OUTPUT] [--combined]
+             [--snapshot SNAPSHOT] [--itunes-style]
+             [--item-types ITEM_TYPES [ITEM_TYPES ...]] [--domain DOMAIN]
              apple_id password
 
 positional arguments:
@@ -34,6 +34,7 @@ positional arguments:
 
 optional arguments:
   -h, --help            Show this help message and exit.
+  --threads THREADS     Download thread pool size
   --output OUTPUT, -o OUTPUT
                         Output directory.
   --combined            Do not separate each snapshot into its own folder
