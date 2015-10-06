@@ -9,6 +9,7 @@ monkey.patch_all()
 from datetime import datetime
 from httplib import HTTPSConnection
 from pprint import pprint
+import ssl, socket
 import argparse
 import base64
 import errno
@@ -69,7 +70,10 @@ def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
     return None
 
 def plist_request(host, method, url, body, headers):
+    # conn = HTTPSConnection(host)
     conn = HTTPSConnection(host)
+    sock = socket.create_connection((conn.host, conn.port), conn.timeout, conn.source_address)
+    conn.sock = ssl.wrap_socket(sock, conn.key_file, conn.cert_file, ssl_version=ssl.PROTOCOL_TLSv1)
     request = conn.request(method, url, body, headers)
     response = conn.getresponse()
 
@@ -91,6 +95,8 @@ def plist_request(host, method, url, body, headers):
 
 def probobuf_request(host, method, url, body, headers, msg=None):
     conn = HTTPSConnection(host)
+    sock = socket.create_connection((conn.host, conn.port), conn.timeout, conn.source_address)
+    conn.sock = ssl.wrap_socket(sock, conn.key_file, conn.cert_file, ssl_version=ssl.PROTOCOL_TLSv1)
     request = conn.request(method, url, body, headers)
     response = conn.getresponse()
     length = response.getheader("content-length")
