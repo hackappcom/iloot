@@ -70,7 +70,6 @@ def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
     return None
 
 def plist_request(host, method, url, body, headers):
-    # conn = HTTPSConnection(host)
     conn = HTTPSConnection(host)
     sock = socket.create_connection((conn.host, conn.port), conn.timeout, conn.source_address)
     conn.sock = ssl.wrap_socket(sock, conn.key_file, conn.cert_file, ssl_version=ssl.PROTOCOL_TLSv1)
