@@ -8,7 +8,7 @@ message MBSAccount {
 message MBSBackup {
     optional bytes backupUDID = 1;
     optional uint64 QuotaUsed = 2;
-    optional MBSSnapshot Snapshot = 3;
+    repeated MBSSnapshot Snapshot = 3;
     optional MBSBackupAttributes Attributes = 4;
     optional uint64 KeysLastModified = 5;
 }
