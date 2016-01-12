@@ -9,6 +9,7 @@ monkey.patch_all()
 from datetime import datetime
 from httplib import HTTPSConnection
 from pprint import pprint
+import ssl, socket
 import argparse
 import base64
 import errno
@@ -28,11 +29,11 @@ from keystore.keybag import Keybag
 from pbuf import decode_protobuf_array, encode_protobuf_array
 from util import hexdump
 
-CLIENT_INFO = "<iPhone2,1> <iPhone OS;5.1.1;9B206> <com.apple.AppleAccount/1.0 ((null)/(null))>"
+CLIENT_INFO = "<iPhone6,2> <iPhone OS;9.0.2;13A452> <com.apple.AppleAccount/1.0 ((null)/(null))>"
 USER_AGENT_UBD = "ubd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
-USER_AGENT_MOBILE_BACKUP = "MobileBackup/5.1.1 (9B206; iPhone3,1)"
+USER_AGENT_MOBILE_BACKUP = "MobileBackup/9.0.2 (13A452; iPhone6,2)"
 USER_AGENT_BACKUPD = "backupd (unknown version) CFNetwork/548.1.4 Darwin/11.0.0"
-CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;5.1.1;9B206> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/9B206)>"
+CLIENT_INFO_BACKUP = "<N88AP> <iPhone OS;9.0.2;13A452> <com.apple.icloud.content/211.1 (com.apple.MobileBackup/13A452)>"
 DEFAULT_THREADS = 100
 DOWNLOAD_CHUNKS_ATTEMPTS_MAX = 10
 ITEM_TYPES_TO_FILE_NAMES = {
@@ -70,6 +71,8 @@ def decrypt_chunk(data, chunk_encryption_key, chunk_checksum):
 
 def plist_request(host, method, url, body, headers):
     conn = HTTPSConnection(host)
+    sock = socket.create_connection((conn.host, conn.port), conn.timeout, conn.source_address)
+    conn.sock = ssl.wrap_socket(sock, conn.key_file, conn.cert_file, ssl_version=ssl.PROTOCOL_TLSv1)
     request = conn.request(method, url, body, headers)
     response = conn.getresponse()
 
@@ -91,6 +94,8 @@ def plist_request(host, method, url, body, headers):
 
 def probobuf_request(host, method, url, body, headers, msg=None):
     conn = HTTPSConnection(host)
+    sock = socket.create_connection((conn.host, conn.port), conn.timeout, conn.source_address)
+    conn.sock = ssl.wrap_socket(sock, conn.key_file, conn.cert_file, ssl_version=ssl.PROTOCOL_TLSv1)
     request = conn.request(method, url, body, headers)
     response = conn.getresponse()
     length = response.getheader("content-length")
@@ -510,8 +515,8 @@ class MobileBackupClient(object):
             "Product Type" : mbsbackup.Attributes.ProductType,
             "Serial Number" : mbsbackup.Attributes.SerialNumber,
             "Target Type" : "Device",
-            "iTunes Version" : "11.1",
-            "Product Version" : "8.1.1",  # Must be higher than 4.0, current iTunes backup sets to 8.1.1
+            "iTunes Version" : "12.3",
+            "Product Version" : "9.0.2",  # Must be higher than 4.0, current iTunes backup sets to 8.1.1
             "Target Identifier" : mbsbackup.backupUDID.encode("hex"),
             "Unique Identifier" : mbsbackup.backupUDID.encode("hex")
         }
@@ -598,6 +603,7 @@ def download_backup(login, password, output_folder, types, chosen_snapshot_id, c
             print "===[", i, "]==="
             print "\tUDID: ", backup.backupUDID.encode("hex")
             print "\tDevice: ", backup.Attributes.MarketingName
+            print "\tVersion: ", backup.Snapshot.Attributes.ProductVersion
             print "\tSize: ", hurry.filesize.size(backup.QuotaUsed)
             print "\tLastUpdate: ", datetime.utcfromtimestamp(backup.Snapshot.LastModified)
 
